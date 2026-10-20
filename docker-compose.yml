@@ -1,0 +1,29 @@
+name: pinforth
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: pinforth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pinforth}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pinforth_local_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pinforth}
+      # Defaults for psql / pg_isready inside the container
+      PGUSER: ${POSTGRES_USER:-pinforth}
+      PGDATABASE: ${POSTGRES_DB:-pinforth}
+    ports:
+      # Bound to localhost only; change POSTGRES_PORT if 5432 is already taken.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # TCP check: the first-run init server only listens on the socket, so this avoids a false "ready".
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:

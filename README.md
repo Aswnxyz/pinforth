@@ -93,6 +93,7 @@ Additional packages, including the embeddable feedback SDK and background worker
 - Node.js 24
 - pnpm 12.14.0
 - Git
+- Docker Desktop (or Docker Engine with Compose v2.17+)
 
 ### Clone the repository
 
@@ -108,6 +109,31 @@ pnpm install
 ```
 
 If pnpm requests build-script approval, review the dependencies before running `pnpm approve-builds`.
+
+### Local database
+
+PostgreSQL 17 runs in Docker. Data is kept in the `pinforth_pgdata` volume, so it survives restarts and `pnpm db:down`.
+
+Create your local env file once (`.env` is git-ignored):
+
+```bash
+cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
+```
+
+Then:
+
+| Command | Description |
+|---|---|
+| `pnpm db:up` | Start PostgreSQL and wait until it is healthy |
+| `pnpm db:status` | Show container status and health |
+| `pnpm db:logs` | Follow database logs |
+| `pnpm db:psql` | Open a `psql` shell in the database |
+| `pnpm db:down` | Stop the database (data is kept) |
+| `pnpm db:reset` | **Delete all local data** and start fresh |
+
+The database listens on `localhost:5432`; connect using `DATABASE_URL` from `.env`. If port 5432 is already in use, change `POSTGRES_PORT` and the port in `DATABASE_URL`.
+
+Credentials are read only when the volume is first created. After changing `POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_DB`, run `pnpm db:reset`.
 
 ### Start development servers
 
@@ -132,7 +158,8 @@ This builds the shared package and starts the frontend and backend concurrently.
 | `pnpm dev:api` | Start Express backend |
 | `pnpm build:shared` | Build shared TypeScript package |
 | `pnpm build` | Build all workspace packages |
-| `pnpm lint` | Run frontend ESLint |
+| `pnpm lint:web` | Run frontend ESLint |
+| `pnpm db:up` / `pnpm db:down` | Start / stop local PostgreSQL |
 
 When running individual applications, build the shared package first. Changes to shared package source may require rebuilding it during development.
 
