@@ -1,0 +1,48 @@
+
+# ==========================================
+# Pinforth - Root .gitignore
+# ==========================================
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Test outputs
+coverage/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Deployment
+.vercel/
+
+# Temporary files
+.tmp/
+temp/
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.idea/
+*.swp
