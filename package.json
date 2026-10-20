@@ -1,0 +1,27 @@
+{
+  "name": "pinforth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered website feedback, issue tracking, fix verification, and client approval platform.",
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.14.0",
+      "onFail": "download"
+    }
+  },
+  "scripts": {
+    "dev": "pnpm build:shared && pnpm --parallel --filter @pinforth/web --filter @pinforth/api run dev",
+    "dev:web": "pnpm build:shared && pnpm --filter @pinforth/web dev",
+    "dev:api": "pnpm build:shared && pnpm --filter @pinforth/api dev",
+    "build:shared": "pnpm --filter @pinforth/shared build",
+    "build:web": "pnpm --filter @pinforth/web build",
+    "build:api": "pnpm --filter @pinforth/api build",
+    "build": "pnpm build:shared && pnpm build:api && pnpm build:web",
+    "lint:web": "pnpm --filter @pinforth/web lint",
+    "typecheck:api": "pnpm --filter @pinforth/api typecheck",
+    "typecheck:shared": "pnpm --filter @pinforth/shared typecheck"
+  }
+}
