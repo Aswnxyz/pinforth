@@ -6,7 +6,7 @@ Pinforth is an AI-assisted website feedback, issue tracking, QA verification, an
 
 It aims to simplify the complete website review and delivery process—from collecting visual feedback to verifying fixes and approving releases.
 
-> **Project Status:** Early Development — Monorepo Foundation
+> **Project Status:** Early Development — Database Foundation
 
 ## The Problem
 
@@ -58,8 +58,7 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
 | Backend | Node.js, Express.js 5, TypeScript |
-| Database (planned) | PostgreSQL, Prisma |
-| Validation | Zod |
+| Database | PostgreSQL 17, Prisma ORM 7 || Validation | Zod |
 | Package Management | pnpm Workspaces |
 | Background Processing (planned) | Redis, BullMQ |
 | AI Integration (planned) | LLM APIs |
@@ -72,12 +71,23 @@ The project uses a **TypeScript monorepo** managed with pnpm workspaces. Turbore
 ```text
 pinforth/
 ├── apps/
-│   ├── web/                 # Next.js frontend
-│   └── api/                 # Express.js backend
+│   ├── web/                    # Next.js frontend
+│   └── api/                    # Express.js backend
+│       ├── prisma/
+│       │   ├── schema.prisma   # Database models
+│       │   └── migrations/    # Versioned SQL migrations
+│       ├── src/
+│       │   ├── lib/
+│       │   │   └── prisma.ts  # Prisma Client instance
+│       │   └── scripts/
+│       │       └── check-db.ts
+│       └── prisma.config.ts
 │
 ├── packages/
-│   └── shared/              # Shared types and validation schemas
+│   └── shared/                 # Shared types and Zod schemas
 │
+├── docker-compose.yml         # Local PostgreSQL
+├── .env.example
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── pnpm-lock.yaml
@@ -135,6 +145,61 @@ The database listens on `localhost:5432`; connect using `DATABASE_URL` from `.en
 
 Credentials are read only when the volume is first created. After changing `POSTGRES_USER`, `POSTGRES_PASSWORD` or `POSTGRES_DB`, run `pnpm db:reset`.
 
+### Prisma Database Setup
+
+Pinforth uses Prisma ORM with PostgreSQL for type-safe database access.
+
+Prisma is configured inside `apps/api`, while PostgreSQL runs through Docker Compose.
+
+After starting PostgreSQL with `pnpm db:up`, apply the existing database migrations:
+
+```bash
+pnpm --filter @pinforth/api exec prisma migrate deploy
+```
+
+Generate Prisma Client:
+
+```bash
+pnpm --filter @pinforth/api exec prisma generate
+```
+
+Verify the database connection:
+
+```bash
+pnpm --filter @pinforth/api exec tsx src/scripts/check-db.ts
+```
+
+Check migration status:
+
+```bash
+pnpm --filter @pinforth/api exec prisma migrate status
+```
+
+#### Database Development Commands
+
+| Command | Description |
+|---|---|
+| `prisma migrate dev --name <name>` | Create and apply a development migration |
+| `prisma migrate deploy` | Apply existing committed migrations |
+| `prisma generate` | Generate the type-safe Prisma Client |
+| `prisma migrate status` | Check the database migration status |
+| `prisma validate` | Validate the Prisma schema |
+| `prisma studio` | Open Prisma's database browser |
+
+Run Prisma commands from the API workspace, for example:
+
+```bash
+pnpm --filter @pinforth/api exec prisma studio
+```
+
+The database schema is maintained in `apps/api/prisma/schema.prisma`.
+
+Commit Prisma schema and migration files to Git. Generated Prisma Client files are excluded from version control.
+
+Each developer should configure their own root `.env` file using `.env.example`. If the default PostgreSQL port `5432` is occupied, update both `POSTGRES_PORT` and `DATABASE_URL` in the local `.env`.
+
+**Warning:** `pnpm db:reset` deletes all data in the local PostgreSQL volume. Use it only when intentionally resetting the local development database.
+
 ### Start development servers
 
 ```bash
@@ -171,12 +236,23 @@ When running individual applications, build the shared package first. Changes to
 - Express.js backend scaffold.
 - Shared TypeScript and Zod package.
 - Root development and build scripts.
-- Initial production build verification.
+- PostgreSQL 17 local development environment using Docker Compose.
+- Prisma ORM 7 integration with PostgreSQL.
+- Initial database models:
+  - User
+  - Organization
+  - OrganizationMember
+  - Project
+  - Environment
+- Initial Prisma database migration.
+- Prisma Client integration using the PostgreSQL driver adapter.
+- Database connectivity verification with compiled JavaScript.
 
 **Upcoming**
-- PostgreSQL database integration.
-- Authentication and workspace management.
-- Organization and project management.
+- Authentication and authorization.
+- Organization and membership management.
+- Project management APIs.
+- Deployment version tracking.
 - Embeddable website feedback SDK.
 - Issue tracking and collaboration.
 - Fix verification and client approval workflows.
