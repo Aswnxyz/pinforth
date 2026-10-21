@@ -15,14 +15,64 @@ enum OrganizationRole {
   MEMBER
 }
 
-model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique @db.VarChar(320)
-  name      String?  @db.VarChar(160)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+enum VerificationTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
 
-  memberships OrganizationMember[]
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  // Stored trimmed and lowercased by the application.
+  email           String    @unique @db.VarChar(320)
+  name            String?   @db.VarChar(160)
+  // Nullable so invited or OAuth-only users can exist without a password.
+  passwordHash    String?   @db.VarChar(255)
+  emailVerifiedAt DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  memberships        OrganizationMember[]
+  sessions           Session[]
+  verificationTokens VerificationToken[]
+}
+
+// One row per refresh token. Rotation creates a new row in the same family;
+// presenting an already-rotated token revokes the whole family.
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  // SHA-256 of the opaque refresh token; the raw token is never stored.
+  refreshTokenHash String    @unique @db.Char(64)
+  familyId         String    @db.Uuid
+  expiresAt        DateTime  @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  replacedById     String?   @unique @db.Uuid
+  userAgent        String?   @db.VarChar(512)
+  ipAddress        String?   @db.VarChar(45)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy Session? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   Session? @relation("SessionRotation")
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+// Single-use tokens for email verification and password reset.
+model VerificationToken {
+  id        String                @id @default(uuid()) @db.Uuid
+  userId    String                @db.Uuid
+  type      VerificationTokenType
+  // SHA-256 of the token sent by email; the raw token is never stored.
+  tokenHash String                @unique @db.Char(64)
+  expiresAt DateTime              @db.Timestamptz(3)
+  usedAt    DateTime?             @db.Timestamptz(3)
+  createdAt DateTime              @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
 }
 
 model Organization {

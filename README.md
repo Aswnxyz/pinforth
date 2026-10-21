@@ -58,11 +58,12 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
 | Backend | Node.js, Express.js 5, TypeScript |
-| Database | PostgreSQL 17, Prisma ORM 7 || Validation | Zod |
+| Database | PostgreSQL 17, Prisma ORM 7 |
+| Validation | Zod |
 | Package Management | pnpm Workspaces |
 | Background Processing (planned) | Redis, BullMQ |
 | AI Integration (planned) | LLM APIs |
-| Testing (planned) | Vitest, Playwright |
+| Testing | Vitest, Supertest (API); Playwright planned |
 
 The project uses a **TypeScript monorepo** managed with pnpm workspaces. Turborepo is not currently part of the setup.
 
@@ -77,11 +78,17 @@ pinforth/
 │       │   ├── schema.prisma   # Database models
 │       │   └── migrations/    # Versioned SQL migrations
 │       ├── src/
+│       │   ├── config/
+│       │   │   └── env.ts     # Validated environment variables
 │       │   ├── lib/
+│       │   │   ├── errors.ts  # AppError and HTTP error helpers
 │       │   │   └── prisma.ts  # Prisma Client instance
+│       │   ├── middleware/    # Error handling, origin checks
 │       │   └── scripts/
 │       │       └── check-db.ts
-│       └── prisma.config.ts
+│       ├── test/              # Test database setup and DB tests
+│       ├── prisma.config.ts
+│       └── vitest.config.ts
 │
 ├── packages/
 │   └── shared/                 # Shared types and Zod schemas
@@ -225,8 +232,29 @@ This builds the shared package and starts the frontend and backend concurrently.
 | `pnpm build` | Build all workspace packages |
 | `pnpm lint:web` | Run frontend ESLint |
 | `pnpm db:up` / `pnpm db:down` | Start / stop local PostgreSQL |
+| `pnpm test:api` | Run API tests against the test database |
 
 When running individual applications, build the shared package first. Changes to shared package source may require rebuilding it during development.
+
+### Running tests
+
+API tests use Vitest and Supertest against a separate `<database>_test` database (for example `pinforth_test`), so your development data is never touched. With PostgreSQL running:
+
+```bash
+pnpm test:api
+```
+
+The test database is created and migrated automatically on each run, and tables are emptied between tests. Tests refuse to run against any database whose name does not end in `_test`. Set `TEST_DATABASE_URL` in `.env` to use a different database.
+
+### API environment
+
+The API validates its environment on startup and exits with a clear message if anything is missing or invalid.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | (required) | PostgreSQL connection string |
+| `PORT` | `4000` | API port |
+| `WEB_ORIGIN` | `http://localhost:3000` | Comma-separated origins allowed to call the API with cookies |
 
 ## Development Status
 
@@ -247,6 +275,9 @@ When running individual applications, build the shared package first. Changes to
 - Initial Prisma database migration.
 - Prisma Client integration using the PostgreSQL driver adapter.
 - Database connectivity verification with compiled JavaScript.
+- API foundation: validated environment config, central JSON error handling, security headers, credentialed CORS and origin checks.
+- Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
+- API test setup with an isolated test database.
 
 **Upcoming**
 - Authentication and authorization.
