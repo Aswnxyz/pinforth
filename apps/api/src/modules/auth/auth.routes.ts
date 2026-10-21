@@ -1,9 +1,18 @@
-import { loginSchema, signupSchema } from "@pinforth/shared";
+import { forgotPasswordSchema, loginSchema, resetPasswordSchema, signupSchema } from "@pinforth/shared";
 import { Router, type Request } from "express";
 import { getAuth, requireAuth } from "../../middleware/require-auth.js";
 import { getCurrentUser, login, signup } from "./auth.service.js";
 import { clearAuthCookies, readRefreshToken, setAuthCookies } from "./cookies.js";
-import { loginAccountLimiter, loginIpLimiter, refreshLimiter, signupLimiter } from "./rate-limit.js";
+import { requestPasswordReset, resetPassword } from "./password-reset.service.js";
+import {
+  forgotPasswordEmailLimiter,
+  forgotPasswordIpLimiter,
+  loginAccountLimiter,
+  loginIpLimiter,
+  refreshLimiter,
+  resetPasswordLimiter,
+  signupLimiter,
+} from "./rate-limit.js";
 import { revokeAllUserSessions, revokeFamilyByToken, rotateSession, type ClientMeta } from "./session.service.js";
 
 const router = Router();
@@ -78,6 +87,28 @@ router.post("/logout-all", requireAuth, async (req, res) => {
 
   clearAuthCookies(res);
   res.status(200).json({ success: true, message: "Signed out of all devices" });
+});
+
+// Same response whether or not the email has an account.
+router.post("/forgot-password", forgotPasswordIpLimiter, forgotPasswordEmailLimiter, async (req, res) => {
+  const input = forgotPasswordSchema.parse(req.body);
+
+  await requestPasswordReset(input);
+
+  res.status(200).json({
+    success: true,
+    message: "If an account exists for that email, a reset link is on its way.",
+  });
+});
+
+// Doesn't sign the user in: after a reset they log in with the new password.
+router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
+  const input = resetPasswordSchema.parse(req.body);
+
+  await resetPassword(input);
+
+  clearAuthCookies(res);
+  res.status(200).json({ success: true, message: "Password updated. Please sign in." });
 });
 
 router.get("/me", requireAuth, async (req, res) => {

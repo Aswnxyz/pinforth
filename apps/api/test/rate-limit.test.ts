@@ -45,4 +45,18 @@ describe("auth rate limits", () => {
 
     expect(other.status).toBe(401);
   });
+
+  it("caps reset emails to one inbox at 3 per hour", async () => {
+    const forgot = () =>
+      request(app)
+        .post("/api/v1/auth/forgot-password")
+        .set("Origin", WEB_ORIGIN)
+        .send({ email: "victim@example.com" });
+
+    for (let i = 0; i < 3; i++) {
+      expect((await forgot()).status).toBe(200);
+    }
+
+    expect((await forgot()).status).toBe(429);
+  });
 });

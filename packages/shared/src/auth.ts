@@ -34,8 +34,22 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required").max(PASSWORD_MAX_LENGTH),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+// Tokens are 43-char base64url; the bound just rejects junk early.
+const emailTokenSchema = z.string().trim().min(16, "Invalid or expired link").max(256);
+
+export const resetPasswordSchema = z.object({
+  token: emailTokenSchema,
+  password: passwordSchema,
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 export interface AuthUser {
   id: string;

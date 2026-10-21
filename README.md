@@ -95,7 +95,7 @@ pinforth/
 ├── packages/
 │   └── shared/                 # Shared types and Zod schemas
 │
-├── docker-compose.yml         # Local PostgreSQL
+├── docker-compose.yml         # Local PostgreSQL and Mailpit
 ├── .env.example
 ├── package.json
 ├── pnpm-workspace.yaml
@@ -263,6 +263,23 @@ The API validates its environment on startup and exits with a clear message if a
 | `COOKIE_DOMAIN` | (unset) | Production only, e.g. `.pinforth.com` so `app.` and `api.` share auth cookies |
 | `TRUST_PROXY` | `0` | Number of reverse proxies in front of the API, for correct client IPs in rate limiting |
 | `AUTH_RATE_LIMIT` | `true` | Set `false` to disable auth rate limits (tests only) |
+| `APP_URL` | `http://localhost:3000` | Public web app URL, used for links in emails |
+| `MAIL_FROM` | `Pinforth <no-reply@pinforth.local>` | Sender address |
+| `SMTP_HOST` / `SMTP_PORT` | `localhost` / `1025` | SMTP server. The defaults point at Mailpit |
+| `SMTP_SECURE` | `false` | `true` for implicit TLS (port 465) |
+| `SMTP_USER` / `SMTP_PASS` | (unset) | SMTP credentials, if your provider needs them |
+| `PASSWORD_RESET_TTL_MINUTES` | `30` | Reset link lifetime |
+
+### Local email
+
+In development, the API sends email to [Mailpit](https://mailpit.axllent.org/), which catches every message instead of delivering it:
+
+```bash
+pnpm mail:up      # then open http://localhost:8025
+pnpm mail:down
+```
+
+Tests don't use SMTP; they capture messages in memory.
 
 ### Authentication API
 
@@ -279,6 +296,10 @@ Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
 | `POST /logout` | refresh cookie | Ends the current login. Always succeeds |
 | `POST /logout-all` | access | Ends every login for the user |
 | `GET /me` | access | Current user and organization memberships |
+| `POST /forgot-password` | none | `{ email }`. Emails a single-use reset link (30 min). The response is identical whether or not the account exists |
+| `POST /reset-password` | none | `{ token, password }`. Sets the new password, verifies the email, signs out every device and sends a confirmation email. Does not sign the user in |
+
+The reset email links to `${APP_URL}/reset-password?token=…`. That web page must send `Referrer-Policy: no-referrer`, so the token never leaks through the `Referer` header.
 
 When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
 
@@ -307,6 +328,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
 - API test setup with an isolated test database.
 - Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
+- Password reset by email, with Mailpit for local email.
 
 **Upcoming**
 - Authentication and authorization.

@@ -29,6 +29,8 @@
     "db:logs": "docker compose logs -f postgres",
     "db:status": "docker compose ps postgres",
     "db:psql": "docker compose exec postgres psql",
-    "db:reset": "docker compose down -v && docker compose up -d --wait postgres"
+    "db:reset": "docker compose down -v && docker compose up -d --wait postgres",
+    "mail:up": "docker compose up -d mailpit",
+    "mail:down": "docker compose stop mailpit"
   }
 }

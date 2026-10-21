@@ -37,6 +37,19 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  // Public URL of the web app, used to build links in emails.
+  APP_URL: z.url().default("http://localhost:3000"),
+  MAIL_FROM: z.string().default("Pinforth <no-reply@pinforth.local>"),
+  // Defaults point at Mailpit from docker-compose.yml.
+  SMTP_HOST: z.string().default("localhost"),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
 });
 
 const parsed = envSchema

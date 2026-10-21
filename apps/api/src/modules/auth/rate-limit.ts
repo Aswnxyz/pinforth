@@ -39,6 +39,26 @@ export const signupLimiter = limiter({
   keyGenerator: clientIp,
 });
 
+// Stops reset emails being used to spam one inbox.
+export const forgotPasswordEmailLimiter = limiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  keyGenerator: (req) => `forgot:${emailFromBody(req)}`,
+});
+
+export const forgotPasswordIpLimiter = limiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: clientIp,
+});
+
+// Tokens are unguessable, but there's no reason to allow fast retries.
+export const resetPasswordLimiter = limiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: clientIp,
+});
+
 export const refreshLimiter = limiter({
   windowMs: 60 * 1000,
   limit: 30,
