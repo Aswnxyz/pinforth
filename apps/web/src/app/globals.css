@@ -1,26 +1,58 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Every colour in the UI resolves through one of these, so the
+ * light and dark palettes stay in sync and contrast is tuned in one place.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --surface: oklch(0.977 0.003 255);
+  --surface-raised: oklch(1 0 0);
+  --surface-muted: oklch(0.955 0.004 255);
+  --foreground: oklch(0.24 0.013 255);
+  --muted-foreground: oklch(0.46 0.013 255);
+  --border: oklch(0.895 0.006 255);
+  /* Input borders carry the field boundary, so they need 3:1 against the field. */
+  --border-strong: oklch(0.66 0.01 255);
+  --accent: oklch(0.52 0.115 235);
+  --accent-foreground: oklch(1 0 0);
+  --danger: oklch(0.52 0.19 27);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+
+    --surface: oklch(0.18 0.012 255);
+    --surface-raised: oklch(0.225 0.014 255);
+    --surface-muted: oklch(0.265 0.014 255);
+    --foreground: oklch(0.96 0.004 255);
+    --muted-foreground: oklch(0.75 0.012 255);
+    --border: oklch(0.35 0.014 255);
+    --border-strong: oklch(0.53 0.018 255);
+    --accent: oklch(0.72 0.12 235);
+    --accent-foreground: oklch(0.18 0.012 255);
+    --danger: oklch(0.72 0.15 25);
   }
 }
 
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans);
 }
