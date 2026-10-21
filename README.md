@@ -83,7 +83,9 @@ pinforth/
 │       │   ├── lib/
 │       │   │   ├── errors.ts  # AppError and HTTP error helpers
 │       │   │   └── prisma.ts  # Prisma Client instance
-│       │   ├── middleware/    # Error handling, origin checks
+│       │   ├── middleware/    # Error handling, origin checks, requireAuth
+│       │   ├── modules/
+│       │   │   └── auth/      # Routes, service, sessions, tokens, cookies
 │       │   └── scripts/
 │       │       └── check-db.ts
 │       ├── test/              # Test database setup and DB tests
@@ -255,6 +257,32 @@ The API validates its environment on startup and exits with a clear message if a
 | `DATABASE_URL` | (required) | PostgreSQL connection string |
 | `PORT` | `4000` | API port |
 | `WEB_ORIGIN` | `http://localhost:3000` | Comma-separated origins allowed to call the API with cookies |
+| `JWT_ACCESS_SECRET` | (required) | Access-token signing key, at least 32 characters. Generate one per environment (see `.env.example`) |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | Access token lifetime (15 minutes) |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh session lifetime, renewed on each refresh |
+| `COOKIE_DOMAIN` | (unset) | Production only, e.g. `.pinforth.com` so `app.` and `api.` share auth cookies |
+| `TRUST_PROXY` | `0` | Number of reverse proxies in front of the API, for correct client IPs in rate limiting |
+| `AUTH_RATE_LIMIT` | `true` | Set `false` to disable auth rate limits (tests only) |
+
+### Authentication API
+
+Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
+
+- `pf_access`: a 15-minute signed JWT, sent to `/api`.
+- `pf_refresh`: an opaque 30-day token, sent only to `/api/v1/auth`. It is rotated on every refresh and stored only as a SHA-256 hash.
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /signup` | none | `{ email, password, name? }`. Creates the account and signs in. `409` if the email exists |
+| `POST /login` | none | `{ email, password }`. Same `401 INVALID_CREDENTIALS` for an unknown email or a wrong password |
+| `POST /refresh` | refresh cookie | Issues new tokens. Replaying an already-used refresh token signs out that whole login |
+| `POST /logout` | refresh cookie | Ends the current login. Always succeeds |
+| `POST /logout-all` | access | Ends every login for the user |
+| `GET /me` | access | Current user and organization memberships |
+
+When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
+
+Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
 
 ## Development Status
 
@@ -278,6 +306,7 @@ The API validates its environment on startup and exits with a clear message if a
 - API foundation: validated environment config, central JSON error handling, security headers, credentialed CORS and origin checks.
 - Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
 - API test setup with an isolated test database.
+- Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
 
 **Upcoming**
 - Authentication and authorization.

@@ -5,10 +5,12 @@ import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { requireTrustedOrigin } from "./middleware/trusted-origin.js";
+import authRoutes from "./modules/auth/auth.routes.js";
 
 const app = express();
 
 app.disable("x-powered-by");
+app.set("trust proxy", env.TRUST_PROXY);
 
 app.use(helmet());
 
@@ -30,6 +32,8 @@ app.get("/api/v1/health", (_req, res) => {
     message: "Pinforth API is running",
   });
 });
+
+app.use("/api/v1/auth", authRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

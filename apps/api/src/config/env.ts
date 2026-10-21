@@ -24,9 +24,27 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean)
     ),
+  // HS256 signing key for access tokens. Generate with:
+  // node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+  JWT_ACCESS_SECRET: z.string().min(32, "must be at least 32 characters"),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(15 * 60),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // e.g. ".pinforth.com" so app. and api. share cookies. Unset = host-only (localhost).
+  COOKIE_DOMAIN: z.string().optional(),
+  // Number of reverse proxies in front of the API, so req.ip is the real client.
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  AUTH_RATE_LIMIT: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema
+  .refine(
+    (value) => value.NODE_ENV !== "production" || !value.JWT_ACCESS_SECRET.startsWith("replace-me"),
+    { path: ["JWT_ACCESS_SECRET"], message: "still set to the .env.example placeholder" }
+  )
+  .safeParse(process.env);
 
 if (!parsed.success) {
   const issues = parsed.error.issues

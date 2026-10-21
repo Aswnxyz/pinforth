@@ -23,6 +23,9 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl,
       TEST_DATABASE_URL: testDatabaseUrl,
       WEB_ORIGIN: "http://localhost:3000",
+      JWT_ACCESS_SECRET: "test-only-secret-at-least-32-characters-long",
+      // Rate limits are covered by their own test, which turns them back on.
+      AUTH_RATE_LIMIT: "false",
     },
     // Test files share one database.
     fileParallelism: false,
