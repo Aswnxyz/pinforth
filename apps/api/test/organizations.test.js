@@ -9,27 +9,27 @@ import { resetDatabase } from "./reset-database.js";
 
 const BASE = "/api/v1/organizations";
 
-async function userWithSession(email: string) {
+async function userWithSession(email) {
   const res = await request(app)
     .post("/api/v1/auth/signup")
     .set("Origin", WEB_ORIGIN)
     .send(credentials({ email, name: email.split("@")[0] }));
   await waitForPendingMail();
 
-  const access = cookieValue(res, "pf_access")!;
-  const userId = res.body.data.user.id as string;
-  const as = (method: "get" | "post" | "patch", path = "") =>
+  const access = cookieValue(res, "pf_access");
+  const userId = res.body.data.user.id;
+  const as = (method, path = "") =>
     request(app)[method](`${BASE}${path}`).set("Origin", WEB_ORIGIN).set("Cookie", `pf_access=${access}`);
 
   return { userId, access, as };
 }
 
-async function createOrg(owner: Awaited<ReturnType<typeof userWithSession>>, name = "Acme Studio") {
+async function createOrg(owner, name = "Acme Studio") {
   const res = await owner.as("post").send({ name });
-  return res.body.data.organization as { id: string; slug: string };
+  return res.body.data.organization;
 }
 
-async function addMember(orgId: string, userId: string, role: "OWNER" | "ADMIN" | "MEMBER") {
+async function addMember(orgId, userId, role) {
   await prisma.organizationMember.create({ data: { organizationId: orgId, userId, role } });
 }
 
@@ -120,7 +120,7 @@ describe("GET /organizations", () => {
     const res = await alice.as("get");
 
     expect(res.status).toBe(200);
-    expect(res.body.data.organizations.map((o: { id: string; role: string }) => [o.id, o.role])).toEqual([
+    expect(res.body.data.organizations.map((o) => [o.id, o.role])).toEqual([
       [aliceOrg.id, "OWNER"],
       [shared.id, "MEMBER"],
     ]);
@@ -191,7 +191,7 @@ describe("roles within an organization", () => {
     expect(view.status).toBe(200);
     expect(view.body.data.organization.role).toBe("MEMBER");
     expect(members.status).toBe(200);
-    expect(members.body.data.members.map((m: { role: string }) => m.role)).toEqual(["OWNER", "ADMIN", "MEMBER"]);
+    expect(members.body.data.members.map((m) => m.role)).toEqual(["OWNER", "ADMIN", "MEMBER"]);
     expect(JSON.stringify(members.body)).not.toContain("passwordHash");
   });
 

@@ -1,4 +1,3 @@
-import type { RequestHandler } from "express";
 import { env } from "../config/env.js";
 import { forbidden } from "../lib/errors.js";
 
@@ -7,7 +6,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // CSRF defence alongside SameSite cookies: browsers always send Origin on
 // cross-site state-changing requests, so reject any that isn't ours.
 // Requests without Origin come from non-browser clients (curl, server-to-server).
-export const requireTrustedOrigin: RequestHandler = (req, _res, next) => {
+export const requireTrustedOrigin = (req, _res, next) => {
   if (SAFE_METHODS.has(req.method)) {
     next();
     return;

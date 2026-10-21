@@ -1,6 +1,4 @@
-import type { Request, RequestHandler } from "express";
 import { z } from "zod";
-import type { OrganizationRole } from "../generated/prisma/client.js";
 import { forbidden, notFound, unauthorized } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -11,7 +9,8 @@ const orgIdSchema = z.uuid();
 const orgNotFound = () => notFound("Organization not found");
 
 // Mount after requireAuth on routes with an :orgId param. With no roles, any member passes.
-export function requireOrgRole(...roles: OrganizationRole[]): RequestHandler {
+// Sets req.membership = { id, organizationId, role }.
+export function requireOrgRole(...roles) {
   return async (req, _res, next) => {
     if (!req.auth) throw unauthorized();
 
@@ -35,7 +34,7 @@ export function requireOrgRole(...roles: OrganizationRole[]): RequestHandler {
   };
 }
 
-export function getMembership(req: Request) {
+export function getMembership(req) {
   if (!req.membership) throw orgNotFound();
   return req.membership;
 }

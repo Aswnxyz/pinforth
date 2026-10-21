@@ -1,4 +1,3 @@
-import type { CookieOptions, Request, Response } from "express";
 import { env } from "../../config/env.js";
 
 export const ACCESS_COOKIE = "pf_access";
@@ -8,17 +7,15 @@ export const REFRESH_COOKIE = "pf_refresh";
 const ACCESS_PATH = "/api";
 const REFRESH_PATH = "/api/v1/auth";
 
-const baseOptions = (): CookieOptions => ({
+const baseOptions = () => ({
   httpOnly: true,
   secure: env.NODE_ENV === "production",
   sameSite: "lax",
   ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
 });
 
-export function setAuthCookies(
-  res: Response,
-  tokens: { accessToken: string; accessExpiresAt: Date; refreshToken: string; refreshExpiresAt: Date }
-) {
+// tokens: { accessToken, accessExpiresAt, refreshToken, refreshExpiresAt }
+export function setAuthCookies(res, tokens) {
   res.cookie(ACCESS_COOKIE, tokens.accessToken, {
     ...baseOptions(),
     path: ACCESS_PATH,
@@ -32,12 +29,12 @@ export function setAuthCookies(
   });
 }
 
-export function clearAuthCookies(res: Response) {
+export function clearAuthCookies(res) {
   res.clearCookie(ACCESS_COOKIE, { ...baseOptions(), path: ACCESS_PATH });
   res.clearCookie(REFRESH_COOKIE, { ...baseOptions(), path: REFRESH_PATH });
 }
 
-export function readAccessToken(req: Request): string | undefined {
+export function readAccessToken(req) {
   const cookie = req.cookies?.[ACCESS_COOKIE];
   if (typeof cookie === "string" && cookie) return cookie;
 
@@ -48,7 +45,7 @@ export function readAccessToken(req: Request): string | undefined {
   return undefined;
 }
 
-export function readRefreshToken(req: Request): string | undefined {
+export function readRefreshToken(req) {
   const cookie = req.cookies?.[REFRESH_COOKIE];
   return typeof cookie === "string" && cookie ? cookie : undefined;
 }

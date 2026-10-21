@@ -1,4 +1,3 @@
-import type { ForgotPasswordInput, ResetPasswordInput } from "@pinforth/shared";
 import { env } from "../../config/env.js";
 import { AppError, badRequest } from "../../lib/errors.js";
 import { renderEmail, sendMailInBackground } from "../../lib/mailer.js";
@@ -10,7 +9,7 @@ const invalidLink = () =>
   new AppError(400, "INVALID_OR_EXPIRED_TOKEN", "This reset link is invalid or has expired");
 
 // Always resolves the same way whether or not the account exists.
-export async function requestPasswordReset({ email }: ForgotPasswordInput) {
+export async function requestPasswordReset({ email }) {
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, name: true, email: true },
@@ -39,7 +38,7 @@ export async function requestPasswordReset({ email }: ForgotPasswordInput) {
   });
 }
 
-export async function resetPassword({ token, password }: ResetPasswordInput) {
+export async function resetPassword({ token, password }) {
   // Hash before the transaction so the slow part doesn't hold a DB connection.
   const passwordHash = await hashPassword(password);
 

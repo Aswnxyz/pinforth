@@ -7,18 +7,18 @@ import { hashToken } from "../src/modules/auth/tokens.js";
 import { cookieLine, cookieValue, credentials, WEB_ORIGIN } from "./helpers.js";
 import { resetDatabase } from "./reset-database.js";
 
-const signup = (body: object = credentials()) =>
+const signup = (body = credentials()) =>
   request(app).post("/api/v1/auth/signup").set("Origin", WEB_ORIGIN).send(body);
 
-const login = (body: object = credentials()) =>
+const login = (body = credentials()) =>
   request(app).post("/api/v1/auth/login").set("Origin", WEB_ORIGIN).send(body);
 
-const me = (accessToken?: string) => {
+const me = (accessToken) => {
   const req = request(app).get("/api/v1/auth/me");
   return accessToken ? req.set("Cookie", `pf_access=${accessToken}`) : req;
 };
 
-const refresh = (refreshToken?: string) => {
+const refresh = (refreshToken) => {
   const req = request(app).post("/api/v1/auth/refresh").set("Origin", WEB_ORIGIN);
   return refreshToken ? req.set("Cookie", `pf_refresh=${refreshToken}`) : req;
 };
@@ -27,9 +27,9 @@ async function signedUp() {
   const res = await signup();
   return {
     res,
-    access: cookieValue(res, "pf_access")!,
-    refresh: cookieValue(res, "pf_refresh")!,
-    userId: res.body.data.user.id as string,
+    access: cookieValue(res, "pf_access"),
+    refresh: cookieValue(res, "pf_refresh"),
+    userId: res.body.data.user.id,
   };
 }
 
@@ -52,8 +52,8 @@ describe("POST /auth/signup", () => {
     expect(JSON.stringify(res.body)).not.toContain("passwordHash");
     expect(res.body.data.accessTokenExpiresAt).toEqual(expect.any(String));
 
-    const access = cookieLine(res, "pf_access")!;
-    const refreshCookie = cookieLine(res, "pf_refresh")!;
+    const access = cookieLine(res, "pf_access");
+    const refreshCookie = cookieLine(res, "pf_refresh");
     expect(access).toMatch(/HttpOnly/i);
     expect(access).toMatch(/SameSite=Lax/i);
     expect(access).toMatch(/Path=\/api(;|$)/);
@@ -234,8 +234,8 @@ describe("POST /auth/refresh", () => {
     const first = await signedUp();
 
     const res = await refresh(first.refresh);
-    const nextRefresh = cookieValue(res, "pf_refresh")!;
-    const nextAccess = cookieValue(res, "pf_access")!;
+    const nextRefresh = cookieValue(res, "pf_refresh");
+    const nextAccess = cookieValue(res, "pf_access");
 
     expect(res.status).toBe(200);
     expect(nextRefresh).toBeTruthy();
@@ -331,7 +331,7 @@ describe("logout", () => {
   it("logout-all signs out every device", async () => {
     const laptop = await signedUp();
     const phoneLogin = await login();
-    const phoneAccess = cookieValue(phoneLogin, "pf_access")!;
+    const phoneAccess = cookieValue(phoneLogin, "pf_access");
 
     const res = await request(app)
       .post("/api/v1/auth/logout-all")

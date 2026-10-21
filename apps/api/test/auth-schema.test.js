@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import { resetDatabase } from "./reset-database.js";
 
-const hash = (char: string) => char.repeat(64);
+const hash = (char) => char.repeat(64);
 
 describe("auth schema", () => {
   beforeEach(resetDatabase);
@@ -13,7 +13,7 @@ describe("auth schema", () => {
   });
 
   it("runs against the test database", async () => {
-    const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
+    const [{ db }] = await prisma.$queryRaw`SELECT current_database() AS db`;
 
     expect(db.endsWith("_test")).toBe(true);
   });

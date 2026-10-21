@@ -1,12 +1,10 @@
-import type { Prisma, VerificationTokenType } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { generateOpaqueToken, hashToken } from "./tokens.js";
 
-type Tx = Prisma.TransactionClient;
-
 // Issues a new single-use token and invalidates any earlier unused one of the
 // same type, so only the most recent email link works.
-export async function issueVerificationToken(userId: string, type: VerificationTokenType, ttlMinutes: number) {
+// type: "EMAIL_VERIFY" | "PASSWORD_RESET"
+export async function issueVerificationToken(userId, type, ttlMinutes) {
   const token = generateOpaqueToken();
   const now = new Date();
 
@@ -28,9 +26,9 @@ export async function issueVerificationToken(userId: string, type: VerificationT
   return token;
 }
 
-// Atomically marks a token used. Returns its userId, or null if it's unknown,
-// the wrong type, expired or already used.
-export async function consumeVerificationToken(tx: Tx, token: string, type: VerificationTokenType) {
+// Atomically marks a token used inside the given transaction. Returns its
+// userId, or null if it's unknown, the wrong type, expired or already used.
+export async function consumeVerificationToken(tx, token, type) {
   const record = await tx.verificationToken.findUnique({
     where: { tokenHash: hashToken(token) },
     select: { id: true, userId: true, type: true },

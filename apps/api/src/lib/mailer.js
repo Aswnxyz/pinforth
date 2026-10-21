@@ -1,15 +1,9 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 
-export interface MailMessage {
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-}
-
 // Tests read sent mail from here instead of talking to SMTP.
-export const testOutbox: MailMessage[] = [];
+// Each message: { to, subject, text, html }.
+export const testOutbox = [];
 
 const transport =
   env.NODE_ENV === "test"
@@ -21,7 +15,7 @@ const transport =
         ...(env.SMTP_USER ? { auth: { user: env.SMTP_USER, pass: env.SMTP_PASS } } : {}),
       });
 
-export async function sendMail(message: MailMessage) {
+export async function sendMail(message) {
   if (!transport) {
     testOutbox.push(message);
     return;
@@ -30,11 +24,11 @@ export async function sendMail(message: MailMessage) {
   await transport.sendMail({ from: env.MAIL_FROM, ...message });
 }
 
-const pending = new Set<Promise<void>>();
+const pending = new Set();
 
 // Sends without making the caller wait, so a response doesn't take longer when
 // an email is sent (which would reveal whether an account exists).
-export function sendMailInBackground(message: MailMessage) {
+export function sendMailInBackground(message) {
   const job = sendMail(message)
     .catch((error) => {
       console.error(`Failed to send "${message.subject}" email`, error);
@@ -49,11 +43,12 @@ export async function waitForPendingMail() {
   await Promise.all(pending);
 }
 
-const escapeHtml = (value: string) =>
+const escapeHtml = (value) =>
   value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
 // Minimal shared layout; user-supplied text is always escaped.
-export function renderEmail(opts: { greetingName?: string | null; paragraphs: string[]; action?: { label: string; url: string } }) {
+// opts: { greetingName?, paragraphs: string[], action?: { label, url } }
+export function renderEmail(opts) {
   const greeting = `Hi${opts.greetingName ? ` ${opts.greetingName}` : ""},`;
 
   const text = [

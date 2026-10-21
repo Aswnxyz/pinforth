@@ -9,7 +9,7 @@ const { default: app } = await import("../src/app.js");
 const { prisma } = await import("../src/lib/prisma.js");
 const { resetDatabase } = await import("./reset-database.js");
 
-const login = (body: object) =>
+const login = (body) =>
   request(app).post("/api/v1/auth/login").set("Origin", WEB_ORIGIN).send(body);
 
 describe("auth rate limits", () => {

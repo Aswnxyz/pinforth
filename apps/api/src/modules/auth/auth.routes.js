@@ -5,7 +5,7 @@ import {
   signupSchema,
   verifyEmailSchema,
 } from "@pinforth/shared";
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { getAuth, requireAuth } from "../../middleware/require-auth.js";
 import { getCurrentUser, login, signup } from "./auth.service.js";
 import { clearAuthCookies, readRefreshToken, setAuthCookies } from "./cookies.js";
@@ -22,11 +22,11 @@ import {
   signupLimiter,
   verifyEmailLimiter,
 } from "./rate-limit.js";
-import { revokeAllUserSessions, revokeFamilyByToken, rotateSession, type ClientMeta } from "./session.service.js";
+import { revokeAllUserSessions, revokeFamilyByToken, rotateSession } from "./session.service.js";
 
 const router = Router();
 
-const clientMeta = (req: Request): ClientMeta => ({
+const clientMeta = (req) => ({
   userAgent: req.get("user-agent"),
   ipAddress: req.ip,
 });

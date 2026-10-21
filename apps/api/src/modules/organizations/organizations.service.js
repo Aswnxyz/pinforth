@@ -1,11 +1,6 @@
 import { randomBytes } from "node:crypto";
-import {
-  organizationSlugSchema,
-  slugify,
-  type CreateOrganizationInput,
-  type UpdateOrganizationInput,
-} from "@pinforth/shared";
-import { Prisma, type OrganizationRole } from "../../generated/prisma/client.js";
+import { organizationSlugSchema, slugify } from "@pinforth/shared";
+import { Prisma } from "../../generated/prisma/index.js";
 import { badRequest, conflict } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 
@@ -15,11 +10,10 @@ const organizationSelect = {
   slug: true,
   createdAt: true,
   updatedAt: true,
-} as const;
+};
 
-type SelectedOrganization = Prisma.OrganizationGetPayload<{ select: typeof organizationSelect }>;
-
-const toOrganization = (org: SelectedOrganization, role: OrganizationRole) => ({
+// role is the caller's role in this organization: "OWNER" | "ADMIN" | "MEMBER".
+const toOrganization = (org, role) => ({
   id: org.id,
   name: org.name,
   slug: org.slug,
@@ -28,10 +22,10 @@ const toOrganization = (org: SelectedOrganization, role: OrganizationRole) => ({
   updatedAt: org.updatedAt.toISOString(),
 });
 
-const isUniqueViolation = (error: unknown) =>
+const isUniqueViolation = (error) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 
-async function insertWithOwner(userId: string, name: string, slug: string) {
+async function insertWithOwner(userId, name, slug) {
   // Organization and its first OWNER are created together or not at all.
   return prisma.organization.create({
     data: {
@@ -43,7 +37,7 @@ async function insertWithOwner(userId: string, name: string, slug: string) {
   });
 }
 
-export async function createOrganization(userId: string, input: CreateOrganizationInput) {
+export async function createOrganization(userId, input) {
   if (input.slug) {
     try {
       return toOrganization(await insertWithOwner(userId, input.name, input.slug), "OWNER");
@@ -74,7 +68,7 @@ export async function createOrganization(userId: string, input: CreateOrganizati
   throw conflict("Couldn't find a free URL slug, please choose one");
 }
 
-export async function listMyOrganizations(userId: string) {
+export async function listMyOrganizations(userId) {
   const memberships = await prisma.organizationMember.findMany({
     where: { userId },
     select: { role: true, organization: { select: organizationSelect } },
@@ -84,7 +78,7 @@ export async function listMyOrganizations(userId: string) {
   return memberships.map(({ organization, role }) => toOrganization(organization, role));
 }
 
-export async function getOrganization(organizationId: string, role: OrganizationRole) {
+export async function getOrganization(organizationId, role) {
   const org = await prisma.organization.findUniqueOrThrow({
     where: { id: organizationId },
     select: organizationSelect,
@@ -93,11 +87,7 @@ export async function getOrganization(organizationId: string, role: Organization
   return toOrganization(org, role);
 }
 
-export async function updateOrganization(
-  organizationId: string,
-  role: OrganizationRole,
-  input: UpdateOrganizationInput
-) {
+export async function updateOrganization(organizationId, role, input) {
   // Slug isn't editable: it will appear in URLs and widget embed codes.
   const org = await prisma.organization.update({
     where: { id: organizationId },
@@ -108,7 +98,7 @@ export async function updateOrganization(
   return toOrganization(org, role);
 }
 
-export async function listMembers(organizationId: string) {
+export async function listMembers(organizationId) {
   const members = await prisma.organizationMember.findMany({
     where: { organizationId },
     select: {

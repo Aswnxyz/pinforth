@@ -1,10 +1,9 @@
-import type { Request } from "express";
-import { ipKeyGenerator, rateLimit, type Options } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { env } from "../../config/env.js";
 import { tooManyRequests } from "../../lib/errors.js";
 
 // In-memory store: fine for one API instance. Swap in a Redis store before scaling out.
-const limiter = (options: Partial<Options>) =>
+const limiter = (options) =>
   rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
@@ -13,9 +12,9 @@ const limiter = (options: Partial<Options>) =>
     ...options,
   });
 
-const clientIp = (req: Request) => ipKeyGenerator(req.ip ?? "unknown");
+const clientIp = (req) => ipKeyGenerator(req.ip ?? "unknown");
 
-const emailFromBody = (req: Request) =>
+const emailFromBody = (req) =>
   typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
 
 // Failed logins per account+IP: slows password guessing on one account.

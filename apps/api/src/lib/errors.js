@@ -1,9 +1,5 @@
 export class AppError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly details?: unknown;
-
-  constructor(status: number, code: string, message: string, details?: unknown) {
+  constructor(status, code, message, details) {
     super(message);
     this.name = "AppError";
     this.status = status;
@@ -12,7 +8,7 @@ export class AppError extends Error {
   }
 }
 
-export const badRequest = (message: string, details?: unknown) =>
+export const badRequest = (message, details) =>
   new AppError(400, "BAD_REQUEST", message, details);
 
 export const unauthorized = (message = "Authentication required") =>
@@ -25,7 +21,7 @@ export const forbidden = (message = "You do not have access to this resource") =
 export const notFound = (message = "Resource not found") =>
   new AppError(404, "NOT_FOUND", message);
 
-export const conflict = (message: string) =>
+export const conflict = (message) =>
   new AppError(409, "CONFLICT", message);
 
 export const tooManyRequests = (message = "Too many requests, please try again later") =>

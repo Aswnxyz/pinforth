@@ -5,7 +5,7 @@ import { assertTestDatabase } from "./database-url.js";
 export async function resetDatabase() {
   assertTestDatabase(process.env.DATABASE_URL ?? "");
 
-  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+  const tables = await prisma.$queryRaw`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
   `;

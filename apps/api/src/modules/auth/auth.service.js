@@ -1,10 +1,9 @@
-import type { AuthMembership, AuthUser, LoginInput, SignupInput } from "@pinforth/shared";
-import { Prisma } from "../../generated/prisma/client.js";
+import { Prisma } from "../../generated/prisma/index.js";
 import { AppError, conflict, unauthorized } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { sendVerificationEmail } from "./email-verification.service.js";
 import { hashPassword, verifyAgainstDummy, verifyPassword } from "./password.js";
-import { createSession, type ClientMeta } from "./session.service.js";
+import { createSession } from "./session.service.js";
 
 const invalidCredentials = () =>
   new AppError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
@@ -15,12 +14,10 @@ const userSelect = {
   name: true,
   emailVerifiedAt: true,
   createdAt: true,
-} as const;
-
-type SelectedUser = Prisma.UserGetPayload<{ select: typeof userSelect }>;
+};
 
 // The only shape a user leaves the API in — never includes passwordHash.
-export const toAuthUser = (user: SelectedUser): AuthUser => ({
+export const toAuthUser = (user) => ({
   id: user.id,
   email: user.email,
   name: user.name,
@@ -28,10 +25,10 @@ export const toAuthUser = (user: SelectedUser): AuthUser => ({
   createdAt: user.createdAt.toISOString(),
 });
 
-export async function signup(input: SignupInput, meta: ClientMeta) {
+export async function signup(input, meta) {
   const passwordHash = await hashPassword(input.password);
 
-  let user: SelectedUser;
+  let user;
 
   try {
     user = await prisma.user.create({
@@ -53,7 +50,7 @@ export async function signup(input: SignupInput, meta: ClientMeta) {
   return { user: toAuthUser(user), tokens };
 }
 
-export async function login(input: LoginInput, meta: ClientMeta) {
+export async function login(input, meta) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     select: { ...userSelect, passwordHash: true },
@@ -70,13 +67,12 @@ export async function login(input: LoginInput, meta: ClientMeta) {
     throw invalidCredentials();
   }
 
-  const { passwordHash: _omit, ...safeUser } = user;
   const tokens = await createSession(user.id, meta);
 
-  return { user: toAuthUser(safeUser), tokens };
+  return { user: toAuthUser(user), tokens };
 }
 
-export async function getCurrentUser(userId: string) {
+export async function getCurrentUser(userId) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -94,10 +90,8 @@ export async function getCurrentUser(userId: string) {
   // Token was valid but the account is gone.
   if (!user) throw unauthorized();
 
-  const { memberships, ...rest } = user;
-
   return {
-    user: toAuthUser(rest),
-    memberships: memberships satisfies AuthMembership[],
+    user: toAuthUser(user),
+    memberships: user.memberships,
   };
 }

@@ -1,4 +1,3 @@
-import type { VerifyEmailInput } from "@pinforth/shared";
 import { env } from "../../config/env.js";
 import { AppError, unauthorized } from "../../lib/errors.js";
 import { renderEmail, sendMailInBackground } from "../../lib/mailer.js";
@@ -8,7 +7,8 @@ import { consumeVerificationToken, issueVerificationToken } from "./verification
 const invalidLink = () =>
   new AppError(400, "INVALID_OR_EXPIRED_TOKEN", "This verification link is invalid or has expired");
 
-export async function sendVerificationEmail(user: { id: string; email: string; name: string | null }) {
+// user: { id, email, name }
+export async function sendVerificationEmail(user) {
   const token = await issueVerificationToken(user.id, "EMAIL_VERIFY", env.EMAIL_VERIFY_TTL_HOURS * 60);
   // Like the reset page, the web verify page must send `Referrer-Policy: no-referrer`.
   const url = new URL("/verify-email", env.APP_URL);
@@ -29,7 +29,7 @@ export async function sendVerificationEmail(user: { id: string; email: string; n
   });
 }
 
-export async function verifyEmail({ token }: VerifyEmailInput) {
+export async function verifyEmail({ token }) {
   return prisma.$transaction(async (tx) => {
     const userId = await consumeVerificationToken(tx, token, "EMAIL_VERIFY");
     if (!userId) throw invalidLink();
@@ -53,7 +53,7 @@ export async function verifyEmail({ token }: VerifyEmailInput) {
 }
 
 // Returns alreadyVerified instead of erroring: it's an expected outcome, not a failure.
-export async function resendVerificationEmail(userId: string) {
+export async function resendVerificationEmail(userId) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, name: true, emailVerifiedAt: true },

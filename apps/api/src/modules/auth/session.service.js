@@ -8,38 +8,22 @@ import { generateOpaqueToken, hashToken, signAccessToken } from "./tokens.js";
 // within this window gets a plain 401 instead of having the whole family revoked.
 const ROTATION_GRACE_MS = 10_000;
 
-export interface ClientMeta {
-  userAgent?: string;
-  ipAddress?: string;
-}
-
-export interface IssuedTokens {
-  accessToken: string;
-  accessExpiresAt: Date;
-  refreshToken: string;
-  refreshExpiresAt: Date;
-  sessionId: string;
-}
-
 const invalidRefresh = () =>
   new AppError(401, "INVALID_REFRESH_TOKEN", "Session is invalid or has expired");
 
 const refreshExpiry = () => new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-const metaColumns = (meta: ClientMeta) => ({
+// meta: { userAgent?, ipAddress? } from the request.
+const metaColumns = (meta) => ({
   userAgent: meta.userAgent?.slice(0, 512) ?? null,
   ipAddress: meta.ipAddress?.slice(0, 45) ?? null,
 });
 
-async function issueTokens(
-  session: { id: string; userId: string; familyId: string },
-  refreshToken: string,
-  refreshExpiresAt: Date
-) {
-  const sessionId = session.id;
+// Returns { accessToken, accessExpiresAt, refreshToken, refreshExpiresAt, sessionId }.
+async function issueTokens(session, refreshToken, refreshExpiresAt) {
   const { token, expiresAt } = await signAccessToken({
     userId: session.userId,
-    sessionId,
+    sessionId: session.id,
     familyId: session.familyId,
   });
 
@@ -48,11 +32,11 @@ async function issueTokens(
     accessExpiresAt: expiresAt,
     refreshToken,
     refreshExpiresAt,
-    sessionId,
-  } satisfies IssuedTokens;
+    sessionId: session.id,
+  };
 }
 
-export async function createSession(userId: string, meta: ClientMeta): Promise<IssuedTokens> {
+export async function createSession(userId, meta) {
   const refreshToken = generateOpaqueToken();
   const expiresAt = refreshExpiry();
 
@@ -69,7 +53,7 @@ export async function createSession(userId: string, meta: ClientMeta): Promise<I
   return issueTokens(session, refreshToken, expiresAt);
 }
 
-export async function rotateSession(refreshToken: string, meta: ClientMeta): Promise<IssuedTokens> {
+export async function rotateSession(refreshToken, meta) {
   const current = await prisma.session.findUnique({
     where: { refreshTokenHash: hashToken(refreshToken) },
   });
@@ -126,7 +110,7 @@ export async function rotateSession(refreshToken: string, meta: ClientMeta): Pro
 }
 
 // Logout ends the whole login (every rotation of it), not just the current row.
-export async function revokeFamilyByToken(refreshToken: string) {
+export async function revokeFamilyByToken(refreshToken) {
   const session = await prisma.session.findUnique({
     where: { refreshTokenHash: hashToken(refreshToken) },
     select: { familyId: true },
@@ -135,14 +119,14 @@ export async function revokeFamilyByToken(refreshToken: string) {
   if (session) await revokeFamily(session.familyId);
 }
 
-export async function revokeFamily(familyId: string) {
+export async function revokeFamily(familyId) {
   await prisma.session.updateMany({
     where: { familyId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }
 
-export async function revokeAllUserSessions(userId: string) {
+export async function revokeAllUserSessions(userId) {
   await prisma.session.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
@@ -151,7 +135,7 @@ export async function revokeAllUserSessions(userId: string) {
 
 // A family is live while its latest session is unrevoked. Logout, logout-all,
 // password reset and reuse detection all revoke it, cutting off access tokens at once.
-export async function isFamilyActive(familyId: string, userId: string) {
+export async function isFamilyActive(familyId, userId) {
   const live = await prisma.session.findFirst({
     where: { familyId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
     select: { id: true },

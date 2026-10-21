@@ -16,8 +16,8 @@ process.env.TEST_DATABASE_URL = testDatabaseUrl;
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
-    globalSetup: ["./test/global-setup.ts"],
+    include: ["src/**/*.test.js", "test/**/*.test.js"],
+    globalSetup: ["./test/global-setup.js"],
     env: {
       NODE_ENV: "test",
       DATABASE_URL: testDatabaseUrl,

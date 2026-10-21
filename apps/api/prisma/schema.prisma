@@ -1,8 +1,7 @@
+// prisma-client-js emits plain JavaScript; the newer "prisma-client" generator emits TypeScript only.
 generator client {
-  provider            = "prisma-client"
-  output              = "../src/generated/prisma"
-  moduleFormat        = "esm"
-  importFileExtension = "js"
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {

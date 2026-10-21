@@ -1,10 +1,9 @@
-import type { RequestHandler } from "express";
 import { AppError, unauthorized } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 
 // Mount after requireAuth on actions that need a proven email address,
 // such as inviting people or approving a release.
-export const requireVerifiedEmail: RequestHandler = async (req, _res, next) => {
+export const requireVerifiedEmail = async (req, _res, next) => {
   if (!req.auth) throw unauthorized();
 
   const user = await prisma.user.findUnique({

@@ -57,7 +57,7 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 |---|---|
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
-| Backend | Node.js, Express.js 5, TypeScript |
+| Backend | Node.js, Express.js 5, JavaScript (ES modules) |
 | Database | PostgreSQL 17, Prisma ORM 7 |
 | Validation | Zod |
 | Package Management | pnpm Workspaces |
@@ -65,7 +65,7 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 | AI Integration (planned) | LLM APIs |
 | Testing | Vitest, Supertest (API); Playwright planned |
 
-The project uses a **TypeScript monorepo** managed with pnpm workspaces. Turborepo is not currently part of the setup.
+The project is a pnpm workspaces monorepo. The frontend and the shared package use TypeScript; the backend (`apps/api`) is plain JavaScript (ES modules) and runs directly on Node.js with no build step. Turborepo is not currently part of the setup.
 
 ## Project Structure
 
@@ -79,19 +79,19 @@ pinforth/
 │       │   └── migrations/    # Versioned SQL migrations
 │       ├── src/
 │       │   ├── config/
-│       │   │   └── env.ts     # Validated environment variables
+│       │   │   └── env.js     # Validated environment variables
 │       │   ├── lib/
-│       │   │   ├── errors.ts  # AppError and HTTP error helpers
-│       │   │   └── prisma.ts  # Prisma Client instance
+│       │   │   ├── errors.js  # AppError and HTTP error helpers
+│       │   │   └── prisma.js  # Prisma Client instance
 │       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole
 │       │   ├── modules/
 │       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
 │       │   │   └── organizations/
 │       │   └── scripts/
-│       │       └── check-db.ts
+│       │       └── check-db.js
 │       ├── test/              # Test database setup and DB tests
-│       ├── prisma.config.ts
-│       └── vitest.config.ts
+│       ├── prisma.config.js
+│       └── vitest.config.js
 │
 ├── packages/
 │   └── shared/                 # Shared types and Zod schemas
@@ -176,7 +176,7 @@ pnpm --filter @pinforth/api exec prisma generate
 Verify the database connection:
 
 ```bash
-pnpm --filter @pinforth/api exec tsx src/scripts/check-db.ts
+pnpm --filter @pinforth/api db:check
 ```
 
 Check migration status:
@@ -348,7 +348,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
   - Environment
 - Initial Prisma database migration.
 - Prisma Client integration using the PostgreSQL driver adapter.
-- Database connectivity verification with compiled JavaScript.
+- Database connectivity verification script.
 - API foundation: validated environment config, central JSON error handling, security headers, credentialed CORS and origin checks.
 - Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
 - API test setup with an isolated test database.

@@ -1,9 +1,8 @@
-import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ZodError } from "zod";
 import { env } from "../config/env.js";
 import { AppError } from "../lib/errors.js";
 
-export const notFoundHandler: RequestHandler = (_req, res) => {
+export const notFoundHandler = (_req, res) => {
   res.status(404).json({
     success: false,
     code: "ROUTE_NOT_FOUND",
@@ -12,16 +11,13 @@ export const notFoundHandler: RequestHandler = (_req, res) => {
 };
 
 // Errors thrown by express.json() carry a `type` from body-parser.
-const isBodyParserError = (
-  err: unknown
-): err is { type: string; status: number } =>
+const isBodyParserError = (err) =>
   typeof err === "object" &&
   err !== null &&
-  "type" in err &&
-  "status" in err &&
-  typeof (err as { type: unknown }).type === "string";
+  typeof err.type === "string" &&
+  "status" in err;
 
-export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+export const errorHandler = (err, _req, res, next) => {
   if (res.headersSent) {
     next(err);
     return;

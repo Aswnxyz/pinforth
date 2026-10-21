@@ -7,15 +7,10 @@ const ISSUER = "pinforth-api";
 const AUDIENCE = "pinforth-web";
 const secret = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
 
-export interface AccessTokenClaims {
-  userId: string;
-  sessionId: string;
-  // Login family: revocation is checked per family so a rotation doesn't
-  // invalidate requests already in flight with the previous access token.
-  familyId: string;
-}
-
-export async function signAccessToken({ userId, sessionId, familyId }: AccessTokenClaims) {
+// Claims: userId, sessionId, and familyId (the login family). Revocation is
+// checked per family so a rotation doesn't invalidate requests already in
+// flight with the previous access token.
+export async function signAccessToken({ userId, sessionId, familyId }) {
   const expiresAt = new Date(Date.now() + env.ACCESS_TOKEN_TTL_SECONDS * 1000);
 
   const token = await new SignJWT({ sid: sessionId, fid: familyId })
@@ -30,7 +25,8 @@ export async function signAccessToken({ userId, sessionId, familyId }: AccessTok
   return { token, expiresAt };
 }
 
-export async function verifyAccessToken(token: string): Promise<AccessTokenClaims> {
+// Returns { userId, sessionId, familyId } or throws a 401.
+export async function verifyAccessToken(token) {
   try {
     const { payload } = await jwtVerify(token, secret, {
       issuer: ISSUER,
@@ -61,4 +57,4 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
 export const generateOpaqueToken = () => randomBytes(32).toString("base64url");
 
 // Only this hash is stored, so a database leak doesn't expose usable tokens.
-export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+export const hashToken = (token) => createHash("sha256").update(token).digest("hex");

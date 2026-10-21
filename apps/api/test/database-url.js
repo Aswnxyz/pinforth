@@ -1,5 +1,5 @@
 // Derives the test database URL from DATABASE_URL: .../pinforth -> .../pinforth_test
-export function toTestDatabaseUrl(databaseUrl: string | undefined): string {
+export function toTestDatabaseUrl(databaseUrl) {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL or TEST_DATABASE_URL must be set to run tests");
   }
@@ -12,7 +12,7 @@ export function toTestDatabaseUrl(databaseUrl: string | undefined): string {
   return url.toString();
 }
 
-export function assertTestDatabase(databaseUrl: string): string {
+export function assertTestDatabase(databaseUrl) {
   const name = new URL(databaseUrl).pathname.replace(/^\//, "");
 
   // Guard against ever migrating or truncating a real database.

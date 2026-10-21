@@ -12,7 +12,7 @@ import { hashToken } from "../src/modules/auth/tokens.js";
 import { cookieValue, credentials, WEB_ORIGIN } from "./helpers.js";
 import { resetDatabase } from "./reset-database.js";
 
-const post = (path: string, body: object = {}, access?: string) => {
+const post = (path, body = {}, access) => {
   const req = request(app).post(`/api/v1/auth/${path}`).set("Origin", WEB_ORIGIN);
   return (access ? req.set("Cookie", `pf_access=${access}`) : req).send(body);
 };
@@ -27,7 +27,7 @@ const verificationTokenFrom = (index = -1) => {
 async function signedUp() {
   const res = await post("signup", credentials());
   await waitForPendingMail();
-  return { access: cookieValue(res, "pf_access")!, userId: res.body.data.user.id as string };
+  return { access: cookieValue(res, "pf_access"), userId: res.body.data.user.id };
 }
 
 const emailVerifiedAt = async () =>
@@ -102,7 +102,7 @@ describe("POST /auth/verify-email", () => {
     await signedUp();
     await post("forgot-password", { email: "owner@example.com" });
     await waitForPendingMail();
-    const resetToken = testOutbox.at(-1)!.text.match(/token=([A-Za-z0-9_-]+)/)![1];
+    const resetToken = testOutbox.at(-1).text.match(/token=([A-Za-z0-9_-]+)/)[1];
 
     const res = await post("verify-email", { token: resetToken });
 

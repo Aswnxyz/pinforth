@@ -21,7 +21,6 @@
     "build:api": "pnpm --filter @pinforth/api build",
     "build": "pnpm build:shared && pnpm build:api && pnpm build:web",
     "lint:web": "pnpm --filter @pinforth/web lint",
-    "typecheck:api": "pnpm --filter @pinforth/api typecheck",
     "typecheck:shared": "pnpm --filter @pinforth/shared typecheck",
     "test:api": "pnpm build:shared && pnpm --filter @pinforth/api test",
     "db:up": "docker compose up -d --wait postgres",

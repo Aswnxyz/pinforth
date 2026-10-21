@@ -9,7 +9,7 @@ import { resetDatabase } from "./reset-database.js";
 
 const NEW_PASSWORD = "a brand new passphrase";
 
-const post = (path: string, body: object) =>
+const post = (path, body) =>
   request(app).post(`/api/v1/auth/${path}`).set("Origin", WEB_ORIGIN).send(body);
 
 const forgot = async (email = credentials().email) => {
@@ -24,7 +24,7 @@ const tokenFromLastEmail = () => {
   return match[1];
 };
 
-const me = (access: string) => request(app).get("/api/v1/auth/me").set("Cookie", `pf_access=${access}`);
+const me = (access) => request(app).get("/api/v1/auth/me").set("Cookie", `pf_access=${access}`);
 
 beforeEach(async () => {
   await resetDatabase();
@@ -86,16 +86,16 @@ describe("POST /auth/forgot-password", () => {
 
     await forgot();
 
-    expect(testOutbox.at(-1)!.html).not.toContain("<script>");
-    expect(testOutbox.at(-1)!.html).toContain("&#60;script&#62;");
+    expect(testOutbox.at(-1).html).not.toContain("<script>");
+    expect(testOutbox.at(-1).html).toContain("&#60;script&#62;");
   });
 });
 
 describe("POST /auth/reset-password", () => {
   it("sets the new password, signs out everywhere and sends a confirmation", async () => {
     const before = await post("login", credentials());
-    const oldAccess = cookieValue(before, "pf_access")!;
-    const oldRefresh = cookieValue(before, "pf_refresh")!;
+    const oldAccess = cookieValue(before, "pf_access");
+    const oldRefresh = cookieValue(before, "pf_refresh");
 
     await forgot();
     const res = await post("reset-password", { token: tokenFromLastEmail(), password: NEW_PASSWORD });
@@ -115,7 +115,7 @@ describe("POST /auth/reset-password", () => {
     // New password works.
     expect((await post("login", credentials({ password: NEW_PASSWORD }))).status).toBe(200);
 
-    expect(testOutbox.at(-1)!.subject).toMatch(/password was changed/i);
+    expect(testOutbox.at(-1).subject).toMatch(/password was changed/i);
   });
 
   it("marks the email verified, since the link proved ownership", async () => {

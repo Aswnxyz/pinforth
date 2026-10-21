@@ -1,10 +1,10 @@
-import type { Request, RequestHandler } from "express";
 import { unauthorized } from "../lib/errors.js";
 import { readAccessToken } from "../modules/auth/cookies.js";
 import { isFamilyActive } from "../modules/auth/session.service.js";
-import { verifyAccessToken, type AccessTokenClaims } from "../modules/auth/tokens.js";
+import { verifyAccessToken } from "../modules/auth/tokens.js";
 
-export const requireAuth: RequestHandler = async (req, _res, next) => {
+// Sets req.auth = { userId, sessionId, familyId } for the handlers after it.
+export const requireAuth = async (req, _res, next) => {
   const token = readAccessToken(req);
 
   if (!token) throw unauthorized();
@@ -21,7 +21,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
 };
 
 // For handlers mounted behind requireAuth.
-export function getAuth(req: Request): AccessTokenClaims {
+export function getAuth(req) {
   if (!req.auth) throw unauthorized();
   return req.auth;
 }
