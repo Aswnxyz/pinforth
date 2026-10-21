@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { requireTrustedOrigin } from "./middleware/trusted-origin.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import organizationRoutes from "./modules/organizations/organizations.routes.js";
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.get("/api/v1/health", (_req, res) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/organizations", organizationRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

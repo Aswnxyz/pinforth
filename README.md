@@ -83,9 +83,10 @@ pinforth/
 │       │   ├── lib/
 │       │   │   ├── errors.ts  # AppError and HTTP error helpers
 │       │   │   └── prisma.ts  # Prisma Client instance
-│       │   ├── middleware/    # Error handling, origin checks, requireAuth
+│       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole
 │       │   ├── modules/
-│       │   │   └── auth/      # Routes, service, sessions, tokens, cookies
+│       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
+│       │   │   └── organizations/
 │       │   └── scripts/
 │       │       └── check-db.ts
 │       ├── test/              # Test database setup and DB tests
@@ -307,6 +308,24 @@ The reset and verification emails link to `${APP_URL}/reset-password?token=…` 
 
 Users can sign in before confirming their email. Routes that need a proven address, such as inviting members or approving releases, add the `requireVerifiedEmail` middleware after `requireAuth`. It returns `403 EMAIL_NOT_VERIFIED`.
 
+### Organizations API
+
+Base path: `/api/v1/organizations`. Every route requires authentication.
+
+| Endpoint | Role | Description |
+|---|---|---|
+| `POST /` | any user | `{ name, slug? }`. Creates the organization with the caller as `OWNER`. The slug is derived from the name if omitted; a derived slug that's taken gets a short suffix |
+| `GET /` | any user | The caller's organizations, with their role in each |
+| `GET /:orgId` | member | Organization details and the caller's role |
+| `PATCH /:orgId` | `OWNER`, `ADMIN` | `{ name }`. Renames the organization. The slug can't be changed |
+| `GET /:orgId/members` | member | Members, with their roles and join dates |
+
+**Access rules:** routes under `/:orgId` use `requireOrgRole(...roles)` after `requireAuth`.
+
+- **Not a member:** `404 Organization not found`. This is the same response as an organization that doesn't exist, so IDs can't be probed.
+- **Member without the required role:** `403 FORBIDDEN`.
+- Membership is checked on every request, so removing a member takes effect immediately.
+
 When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
 
 Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
@@ -336,10 +355,11 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
 - Password reset by email, with Mailpit for local email.
 - Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
+- Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
 
 **Upcoming**
-- Authentication and authorization.
-- Organization and membership management.
+- Organization invitations and member role management.
+- Guest reviewer access for review rounds.
 - Project management APIs.
 - Deployment version tracking.
 - Embeddable website feedback SDK.
