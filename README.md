@@ -57,14 +57,15 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 |---|---|
 | Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
-| Backend | Node.js, Express.js 5, TypeScript |
-| Database | PostgreSQL 17, Prisma ORM 7 || Validation | Zod |
+| Backend | Node.js, Express.js 5, JavaScript (ES modules) |
+| Database | PostgreSQL 17, Prisma ORM 7 |
+| Validation | Zod |
 | Package Management | pnpm Workspaces |
 | Background Processing (planned) | Redis, BullMQ |
 | AI Integration (planned) | LLM APIs |
-| Testing (planned) | Vitest, Playwright |
+| Testing | Vitest, Supertest (API); Playwright planned |
 
-The project uses a **TypeScript monorepo** managed with pnpm workspaces. Turborepo is not currently part of the setup.
+The project is a pnpm workspaces monorepo. The frontend and the shared package use TypeScript; the backend (`apps/api`) is plain JavaScript (ES modules) and runs directly on Node.js with no build step. Turborepo is not currently part of the setup.
 
 ## Project Structure
 
@@ -77,16 +78,25 @@ pinforth/
 │       │   ├── schema.prisma   # Database models
 │       │   └── migrations/    # Versioned SQL migrations
 │       ├── src/
+│       │   ├── config/
+│       │   │   └── env.js     # Validated environment variables
 │       │   ├── lib/
-│       │   │   └── prisma.ts  # Prisma Client instance
+│       │   │   ├── errors.js  # AppError and HTTP error helpers
+│       │   │   └── prisma.js  # Prisma Client instance
+│       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole
+│       │   ├── modules/
+│       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
+│       │   │   └── organizations/
 │       │   └── scripts/
-│       │       └── check-db.ts
-│       └── prisma.config.ts
+│       │       └── check-db.js
+│       ├── test/              # Test database setup and DB tests
+│       ├── prisma.config.js
+│       └── vitest.config.js
 │
 ├── packages/
 │   └── shared/                 # Shared types and Zod schemas
 │
-├── docker-compose.yml         # Local PostgreSQL
+├── docker-compose.yml         # Local PostgreSQL and Mailpit
 ├── .env.example
 ├── package.json
 ├── pnpm-workspace.yaml
@@ -166,7 +176,7 @@ pnpm --filter @pinforth/api exec prisma generate
 Verify the database connection:
 
 ```bash
-pnpm --filter @pinforth/api exec tsx src/scripts/check-db.ts
+pnpm --filter @pinforth/api db:check
 ```
 
 Check migration status:
@@ -225,8 +235,100 @@ This builds the shared package and starts the frontend and backend concurrently.
 | `pnpm build` | Build all workspace packages |
 | `pnpm lint:web` | Run frontend ESLint |
 | `pnpm db:up` / `pnpm db:down` | Start / stop local PostgreSQL |
+| `pnpm test:api` | Run API tests against the test database |
 
 When running individual applications, build the shared package first. Changes to shared package source may require rebuilding it during development.
+
+### Running tests
+
+API tests use Vitest and Supertest against a separate `<database>_test` database (for example `pinforth_test`), so your development data is never touched. With PostgreSQL running:
+
+```bash
+pnpm test:api
+```
+
+The test database is created and migrated automatically on each run, and tables are emptied between tests. Tests refuse to run against any database whose name does not end in `_test`. Set `TEST_DATABASE_URL` in `.env` to use a different database.
+
+### API environment
+
+The API validates its environment on startup and exits with a clear message if anything is missing or invalid.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | (required) | PostgreSQL connection string |
+| `PORT` | `4000` | API port |
+| `WEB_ORIGIN` | `http://localhost:3000` | Comma-separated origins allowed to call the API with cookies |
+| `JWT_ACCESS_SECRET` | (required) | Access-token signing key, at least 32 characters. Generate one per environment (see `.env.example`) |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | Access token lifetime (15 minutes) |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh session lifetime, renewed on each refresh |
+| `COOKIE_DOMAIN` | (unset) | Production only, e.g. `.pinforth.com` so `app.` and `api.` share auth cookies |
+| `TRUST_PROXY` | `0` | Number of reverse proxies in front of the API, for correct client IPs in rate limiting |
+| `AUTH_RATE_LIMIT` | `true` | Set `false` to disable auth rate limits (tests only) |
+| `APP_URL` | `http://localhost:3000` | Public web app URL, used for links in emails |
+| `MAIL_FROM` | `Pinforth <no-reply@pinforth.local>` | Sender address |
+| `SMTP_HOST` / `SMTP_PORT` | `localhost` / `1025` | SMTP server. The defaults point at Mailpit |
+| `SMTP_SECURE` | `false` | `true` for implicit TLS (port 465) |
+| `SMTP_USER` / `SMTP_PASS` | (unset) | SMTP credentials, if your provider needs them |
+| `PASSWORD_RESET_TTL_MINUTES` | `30` | Reset link lifetime |
+| `EMAIL_VERIFY_TTL_HOURS` | `24` | Email verification link lifetime |
+
+### Local email
+
+In development, the API sends email to [Mailpit](https://mailpit.axllent.org/), which catches every message instead of delivering it:
+
+```bash
+pnpm mail:up      # then open http://localhost:8025
+pnpm mail:down
+```
+
+Tests don't use SMTP; they capture messages in memory.
+
+### Authentication API
+
+Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
+
+- `pf_access`: a 15-minute signed JWT, sent to `/api`.
+- `pf_refresh`: an opaque 30-day token, sent only to `/api/v1/auth`. It is rotated on every refresh and stored only as a SHA-256 hash.
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /signup` | none | `{ email, password, name? }`. Creates the account and signs in. `409` if the email exists |
+| `POST /login` | none | `{ email, password }`. Same `401 INVALID_CREDENTIALS` for an unknown email or a wrong password |
+| `POST /refresh` | refresh cookie | Issues new tokens. Replaying an already-used refresh token signs out that whole login |
+| `POST /logout` | refresh cookie | Ends the current login. Always succeeds |
+| `POST /logout-all` | access | Ends every login for the user |
+| `GET /me` | access | Current user and organization memberships |
+| `POST /forgot-password` | none | `{ email }`. Emails a single-use reset link (30 min). The response is identical whether or not the account exists |
+| `POST /reset-password` | none | `{ token, password }`. Sets the new password, verifies the email, signs out every device and sends a confirmation email. Does not sign the user in |
+
+| `POST /verify-email` | none | `{ token }`. Confirms the email from the link sent at signup. Works on any device without signing in |
+| `POST /resend-verification` | access | Sends a new link and invalidates the old one. Returns `{ alreadyVerified: true }` (200) if there is nothing to do. Limited to 3 per hour |
+
+The reset and verification emails link to `${APP_URL}/reset-password?token=…` and `${APP_URL}/verify-email?token=…`. Both web pages must send `Referrer-Policy: no-referrer`, so the token never leaks through the `Referer` header.
+
+Users can sign in before confirming their email. Routes that need a proven address, such as inviting members or approving releases, add the `requireVerifiedEmail` middleware after `requireAuth`. It returns `403 EMAIL_NOT_VERIFIED`.
+
+### Organizations API
+
+Base path: `/api/v1/organizations`. Every route requires authentication.
+
+| Endpoint | Role | Description |
+|---|---|---|
+| `POST /` | any user | `{ name, slug? }`. Creates the organization with the caller as `OWNER`. The slug is derived from the name if omitted; a derived slug that's taken gets a short suffix |
+| `GET /` | any user | The caller's organizations, with their role in each |
+| `GET /:orgId` | member | Organization details and the caller's role |
+| `PATCH /:orgId` | `OWNER`, `ADMIN` | `{ name }`. Renames the organization. The slug can't be changed |
+| `GET /:orgId/members` | member | Members, with their roles and join dates |
+
+**Access rules:** routes under `/:orgId` use `requireOrgRole(...roles)` after `requireAuth`.
+
+- **Not a member:** `404 Organization not found`. This is the same response as an organization that doesn't exist, so IDs can't be probed.
+- **Member without the required role:** `403 FORBIDDEN`.
+- Membership is checked on every request, so removing a member takes effect immediately.
+
+When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
+
+Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
 
 ## Development Status
 
@@ -246,11 +348,18 @@ When running individual applications, build the shared package first. Changes to
   - Environment
 - Initial Prisma database migration.
 - Prisma Client integration using the PostgreSQL driver adapter.
-- Database connectivity verification with compiled JavaScript.
+- Database connectivity verification script.
+- API foundation: validated environment config, central JSON error handling, security headers, credentialed CORS and origin checks.
+- Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
+- API test setup with an isolated test database.
+- Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
+- Password reset by email, with Mailpit for local email.
+- Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
+- Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
 
 **Upcoming**
-- Authentication and authorization.
-- Organization and membership management.
+- Organization invitations and member role management.
+- Guest reviewer access for review rounds.
 - Project management APIs.
 - Deployment version tracking.
 - Embeddable website feedback SDK.
