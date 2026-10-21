@@ -1,8 +1,15 @@
-import { forgotPasswordSchema, loginSchema, resetPasswordSchema, signupSchema } from "@pinforth/shared";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  resetPasswordSchema,
+  signupSchema,
+  verifyEmailSchema,
+} from "@pinforth/shared";
 import { Router, type Request } from "express";
 import { getAuth, requireAuth } from "../../middleware/require-auth.js";
 import { getCurrentUser, login, signup } from "./auth.service.js";
 import { clearAuthCookies, readRefreshToken, setAuthCookies } from "./cookies.js";
+import { resendVerificationEmail, verifyEmail } from "./email-verification.service.js";
 import { requestPasswordReset, resetPassword } from "./password-reset.service.js";
 import {
   forgotPasswordEmailLimiter,
@@ -10,8 +17,10 @@ import {
   loginAccountLimiter,
   loginIpLimiter,
   refreshLimiter,
+  resendVerificationLimiter,
   resetPasswordLimiter,
   signupLimiter,
+  verifyEmailLimiter,
 } from "./rate-limit.js";
 import { revokeAllUserSessions, revokeFamilyByToken, rotateSession, type ClientMeta } from "./session.service.js";
 
@@ -109,6 +118,24 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res) => {
 
   clearAuthCookies(res);
   res.status(200).json({ success: true, message: "Password updated. Please sign in." });
+});
+
+// No login needed: the link is often opened on a different device.
+router.post("/verify-email", verifyEmailLimiter, async (req, res) => {
+  const input = verifyEmailSchema.parse(req.body);
+  const data = await verifyEmail(input);
+
+  res.status(200).json({ success: true, data, message: "Email confirmed" });
+});
+
+router.post("/resend-verification", requireAuth, resendVerificationLimiter, async (req, res) => {
+  const data = await resendVerificationEmail(getAuth(req).userId);
+
+  res.status(200).json({
+    success: true,
+    data,
+    message: data.alreadyVerified ? "Your email is already confirmed" : "Verification email sent",
+  });
 });
 
 router.get("/me", requireAuth, async (req, res) => {

@@ -50,6 +50,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  EMAIL_VERIFY_TTL_HOURS: z.coerce.number().int().positive().default(24),
 });
 
 const parsed = envSchema

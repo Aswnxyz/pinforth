@@ -28,8 +28,10 @@ const me = (access: string) => request(app).get("/api/v1/auth/me").set("Cookie",
 
 beforeEach(async () => {
   await resetDatabase();
-  testOutbox.length = 0;
   await post("signup", credentials());
+  // Drop the signup verification email so tests only see reset mail.
+  await waitForPendingMail();
+  testOutbox.length = 0;
 });
 
 afterAll(async () => {

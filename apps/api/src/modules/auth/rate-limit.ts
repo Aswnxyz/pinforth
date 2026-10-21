@@ -59,6 +59,19 @@ export const resetPasswordLimiter = limiter({
   keyGenerator: clientIp,
 });
 
+// Runs after requireAuth, so it's keyed per account.
+export const resendVerificationLimiter = limiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  keyGenerator: (req) => `resend:${req.auth?.userId ?? clientIp(req)}`,
+});
+
+export const verifyEmailLimiter = limiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: clientIp,
+});
+
 export const refreshLimiter = limiter({
   windowMs: 60 * 1000,
   limit: 30,

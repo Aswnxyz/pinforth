@@ -2,6 +2,7 @@ import type { AuthMembership, AuthUser, LoginInput, SignupInput } from "@pinfort
 import { Prisma } from "../../generated/prisma/client.js";
 import { AppError, conflict, unauthorized } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
+import { sendVerificationEmail } from "./email-verification.service.js";
 import { hashPassword, verifyAgainstDummy, verifyPassword } from "./password.js";
 import { createSession, type ClientMeta } from "./session.service.js";
 
@@ -47,6 +48,7 @@ export async function signup(input: SignupInput, meta: ClientMeta) {
   }
 
   const tokens = await createSession(user.id, meta);
+  await sendVerificationEmail(user);
 
   return { user: toAuthUser(user), tokens };
 }

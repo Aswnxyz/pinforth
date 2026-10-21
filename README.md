@@ -269,6 +269,7 @@ The API validates its environment on startup and exits with a clear message if a
 | `SMTP_SECURE` | `false` | `true` for implicit TLS (port 465) |
 | `SMTP_USER` / `SMTP_PASS` | (unset) | SMTP credentials, if your provider needs them |
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | Reset link lifetime |
+| `EMAIL_VERIFY_TTL_HOURS` | `24` | Email verification link lifetime |
 
 ### Local email
 
@@ -299,7 +300,12 @@ Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
 | `POST /forgot-password` | none | `{ email }`. Emails a single-use reset link (30 min). The response is identical whether or not the account exists |
 | `POST /reset-password` | none | `{ token, password }`. Sets the new password, verifies the email, signs out every device and sends a confirmation email. Does not sign the user in |
 
-The reset email links to `${APP_URL}/reset-password?token=…`. That web page must send `Referrer-Policy: no-referrer`, so the token never leaks through the `Referer` header.
+| `POST /verify-email` | none | `{ token }`. Confirms the email from the link sent at signup. Works on any device without signing in |
+| `POST /resend-verification` | access | Sends a new link and invalidates the old one. Returns `{ alreadyVerified: true }` (200) if there is nothing to do. Limited to 3 per hour |
+
+The reset and verification emails link to `${APP_URL}/reset-password?token=…` and `${APP_URL}/verify-email?token=…`. Both web pages must send `Referrer-Policy: no-referrer`, so the token never leaks through the `Referer` header.
+
+Users can sign in before confirming their email. Routes that need a proven address, such as inviting members or approving releases, add the `requireVerifiedEmail` middleware after `requireAuth`. It returns `403 EMAIL_NOT_VERIFIED`.
 
 When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
 
@@ -329,6 +335,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - API test setup with an isolated test database.
 - Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
 - Password reset by email, with Mailpit for local email.
+- Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
 
 **Upcoming**
 - Authentication and authorization.
