@@ -6,13 +6,17 @@ import { useSearchParams } from "next/navigation";
 import { FormAlert } from "@/components/ui/form-alert";
 import { verifyEmail } from "@/lib/auth/api";
 import { useAuth } from "@/lib/auth/context";
+import {
+  resolveSessionContinuation,
+  type AuthStatus,
+} from "@/lib/auth/session";
 
 type VerificationStatus = "loading" | "success" | "expired" | "error" | "no-token";
 
 export function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const [token] = useState(() => searchParams.get("token"));
-  const { isAuthenticated, refreshUser } = useAuth();
+  const { status: authStatus, refreshUser } = useAuth();
 
   const [status, setStatus] = useState<VerificationStatus>(
     token ? "loading" : "no-token",
@@ -88,21 +92,12 @@ export function VerifyEmailContent() {
         </div>
 
         <div className="pt-2">
-          {isAuthenticated ? (
-            <Link
-              href="/account"
-              className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              Continue to your account
-            </Link>
-          ) : (
-            <Link
-              href="/login"
-              className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              Sign in to Pinforth
-            </Link>
-          )}
+          <ContinuationAction
+            status={authStatus}
+            onRetry={refreshUser}
+            signedInLabel="Continue to your workspace"
+            signedOutLabel="Sign in to Pinforth"
+          />
         </div>
       </div>
     );
@@ -130,22 +125,88 @@ export function VerifyEmailContent() {
       <FormAlert>{message}</FormAlert>
 
       <div className="pt-2 space-y-2">
-        {isAuthenticated ? (
-          <Link
-            href="/account"
-            className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Go to account overview
-          </Link>
-        ) : (
-          <Link
-            href="/login"
-            className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Return to sign in
-          </Link>
-        )}
+        <ContinuationAction
+          status={authStatus}
+          onRetry={refreshUser}
+          signedInLabel="Go to your workspace"
+          signedOutLabel="Return to sign in"
+        />
       </div>
     </div>
+  );
+}
+
+/**
+ * The continuation shown once the verification finished.
+ *
+ * While the session is still being checked, no destination is offered: the
+ * signed-out link would be wrong for a signed-in user, and the workspace link
+ * would be wrong for a signed-out one. If the session could not be checked at
+ * all, the same applies, so the only honest action is a retry.
+ */
+function ContinuationAction({
+  status,
+  onRetry,
+  signedInLabel,
+  signedOutLabel,
+}: {
+  status: AuthStatus;
+  onRetry: () => Promise<void>;
+  signedInLabel: string;
+  signedOutLabel: string;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const continuation = resolveSessionContinuation(status);
+
+  async function handleRetry() {
+    setRetrying(true);
+
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  if (status === "unavailable") {
+    return (
+      <div className="space-y-3 text-left">
+        <FormAlert>
+          We could not check your session, so we cannot offer the next step
+          yet. This is usually temporary.
+        </FormAlert>
+        <button
+          type="button"
+          onClick={handleRetry}
+          disabled={retrying}
+          aria-busy={retrying}
+          className="inline-flex h-11 w-full items-center justify-center rounded-md border border-border-strong bg-surface-raised px-4 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {retrying ? "Trying again…" : "Try again"}
+        </button>
+      </div>
+    );
+  }
+
+  if (continuation === "pending") {
+    return (
+      <p
+        role="status"
+        className="flex h-11 w-full items-center justify-center rounded-md bg-surface-muted px-4 text-sm font-medium text-muted-foreground"
+      >
+        Checking your session…
+      </p>
+    );
+  }
+
+  const signedIn = continuation === "workspace";
+
+  return (
+    <Link
+      href={signedIn ? "/w" : "/login"}
+      className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      {signedIn ? signedInLabel : signedOutLabel}
+    </Link>
   );
 }

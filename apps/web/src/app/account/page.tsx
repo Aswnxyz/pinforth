@@ -3,14 +3,22 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PinforthLogo } from "@/components/brand/pinforth-logo";
+import { AppHeader } from "@/components/app/app-header";
+import { SessionUnavailable } from "@/components/auth/session-unavailable";
+import { OrganizationRoleBadge } from "@/components/workspace/organization-role-badge";
 import { FormAlert } from "@/components/ui/form-alert";
 import { resendVerification } from "@/lib/auth/api";
 import { useAuth } from "@/lib/auth/context";
 
 export default function AccountPage() {
   const router = useRouter();
-  const { user, memberships, isLoading, isAuthenticated, signOut } = useAuth();
+  const {
+    user,
+    memberships,
+    status: authStatus,
+    errorMessage: authErrorMessage,
+    refreshUser,
+  } = useAuth();
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<{
     type: "success" | "error";
@@ -18,12 +26,35 @@ export default function AccountPage() {
   } | null>(null);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    // Only a session the API refused sends the user to sign in. A session that
+    // could not be checked is offered a retry instead.
+    if (authStatus === "unauthenticated") {
       router.push("/login");
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [authStatus, router]);
 
-  if (isLoading) {
+  if (authStatus === "unavailable") {
+    return (
+      <div className="flex min-h-dvh flex-col bg-surface text-foreground">
+        <AppHeader />
+
+        <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
+          <div className="w-full max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-xs sm:p-8">
+            <SessionUnavailable
+              message={authErrorMessage ?? "We could not reach Pinforth."}
+              onRetry={() => void refreshUser()}
+            />
+          </div>
+        </main>
+
+        <footer className="border-t border-border px-5 py-6 text-center text-xs text-muted-foreground">
+          Pinforth — from feedback to sign-off.
+        </footer>
+      </div>
+    );
+  }
+
+  if (authStatus === "loading") {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-surface text-foreground">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -65,30 +96,14 @@ export default function AccountPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface text-foreground">
-      <header className="flex items-center justify-between px-5 py-5 sm:px-8 sm:py-6 border-b border-border">
+      <AppHeader>
         <Link
-          href="/"
-          className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          href="/w"
+          className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          <PinforthLogo variant="full" size="md" />
+          Overview
         </Link>
-
-        <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Overview
-          </Link>
-          <button
-            type="button"
-            onClick={signOut}
-            className="rounded-md border border-border-strong bg-surface-raised px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+      </AppHeader>
 
       <main className="flex-1 px-4 py-10 sm:px-6">
         <div className="mx-auto max-w-2xl space-y-6">
@@ -202,30 +217,47 @@ export default function AccountPage() {
             </h2>
 
             {memberships.length > 0 ? (
-              <ul className="divide-y divide-border">
-                {memberships.map((m) => (
-                  <li
-                    key={m.organization.id}
-                    className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {m.organization.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        /{m.organization.slug}
-                      </p>
-                    </div>
-                    <span className="rounded-md border border-border bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                      {m.role}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-4">
+                <ul className="divide-y divide-border">
+                  {memberships.map((m) => (
+                    <li key={m.organization.id} className="py-2 first:pt-0 last:pb-0">
+                      <Link
+                        href={`/w/${m.organization.slug}`}
+                        className="flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface-muted focus-visible:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-foreground">
+                            {m.organization.name}
+                          </span>
+                          <span className="block truncate font-mono text-xs text-muted-foreground">
+                            /w/{m.organization.slug}
+                          </span>
+                        </span>
+                        <OrganizationRoleBadge role={m.role} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href="/onboarding"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-md border border-border-strong bg-surface-raised px-4 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  Create another workspace
+                </Link>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                You do not belong to any organizations yet.
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  You do not belong to any organizations yet.
+                </p>
+                <Link
+                  href="/onboarding"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  Create your workspace
+                </Link>
+              </div>
             )}
           </div>
         </div>
