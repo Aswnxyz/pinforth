@@ -1,8 +1,20 @@
+import type { OrganizationRole } from "@pinforth/shared";
 import type { OrganizationSummary } from "./api";
 
 export type OrganizationAccess =
   | { kind: "available"; organization: OrganizationSummary }
   | { kind: "unavailable" };
+
+/**
+ * Whether the signed-in member may create or edit projects in this
+ * organization.
+ *
+ * UX gating only — it hides controls the backend would refuse anyway. The
+ * API remains the authorization authority and can still answer `forbidden`.
+ */
+export function canManageProjects(role: OrganizationRole): boolean {
+  return role === "OWNER" || role === "ADMIN";
+}
 
 /**
  * Resolves a workspace slug against the organizations the signed-in user can
