@@ -38,3 +38,14 @@ export function getMembership(req) {
   if (!req.membership) throw orgNotFound();
   return req.membership;
 }
+
+// For nested routers where requireOrgRole() already loaded the membership:
+// checks the role without another query.
+export function requireMembershipRole(...roles) {
+  return (req, _res, next) => {
+    if (!roles.includes(getMembership(req).role)) {
+      throw forbidden("Your role in this organization doesn't allow this");
+    }
+    next();
+  };
+}
