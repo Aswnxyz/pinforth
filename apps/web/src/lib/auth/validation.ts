@@ -1,56 +1,52 @@
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  emailSchema as sharedEmailSchema,
+} from "@pinforth/shared";
 import { z } from "zod";
 
-/**
- * Form validation for the authentication screens.
- *
- * Email and name limits mirror the existing Prisma `User` model. Password
- * rules are provisional: the model does not define them and the API contract
- * is not final, so they must be confirmed with the backend before they are
- * enforced server-side.
- */
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH };
 
-/** Mirrors `User.email` (`VarChar(320)`). */
-const EMAIL_MAX_LENGTH = 320;
+export const PASSWORD_REQUIREMENT_HINT = `At least ${PASSWORD_MIN_LENGTH} characters.`;
 
-/** Mirrors `User.name` (`VarChar(160)`). */
-const NAME_MAX_LENGTH = 160;
-
-export const PASSWORD_MIN_LENGTH = 8;
-
-export const PASSWORD_REQUIREMENT_HINT = `At least ${PASSWORD_MIN_LENGTH} characters, including a letter and a number.`;
-
-export const emailSchema = z
-  .string()
-  .trim()
-  .min(1, "Enter your email address.")
-  .max(EMAIL_MAX_LENGTH, "Email address is too long.")
-  .pipe(z.email({ error: "Enter a valid email address." }));
-
+/** Mirrors `User.name` (`VarChar(160)`). Required for registration. */
 export const nameSchema = z
   .string()
   .trim()
-  .min(2, "Enter your full name.")
-  .max(NAME_MAX_LENGTH, "Name is too long.");
+  .min(1, "Enter your full name.")
+  .max(160, "Name is too long.");
 
-export const loginPasswordSchema = z.string().min(1, "Enter your password.");
+/** Email with user-friendly error messages and length limit. */
+export const emailSchema = sharedEmailSchema;
 
+/** Login password enforces presence and max length without leaking length policy. */
+export const loginPasswordSchema = z
+  .string()
+  .min(1, "Enter your password.")
+  .max(PASSWORD_MAX_LENGTH, `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`);
+
+/** Registration password enforces NIST 800-63B length without composition rules. */
 export const registerPasswordSchema = z
   .string()
   .min(1, "Enter your password.")
-  .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters.`)
-  .regex(/[a-zA-Z]/, "Include at least one letter.")
-  .regex(/[0-9]/, "Include at least one number.");
+  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
+  .max(PASSWORD_MAX_LENGTH, `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`);
 
 export const loginSchema = z.object({
   email: emailSchema,
   password: loginPasswordSchema,
 });
 
-export const registerSchema = z.object({
-  name: nameSchema,
-  email: emailSchema,
-  password: registerPasswordSchema,
-});
+export const registerSchema = z
+  .object({
+    name: nameSchema,
+    email: emailSchema,
+    password: registerPasswordSchema,
+  })
+  .refine((data) => data.password.trim().toLowerCase() !== data.email.trim().toLowerCase(), {
+    path: ["password"],
+    message: "Password must not be your email address.",
+  });
 
 export type LoginValues = z.infer<typeof loginSchema>;
 export type RegisterValues = z.infer<typeof registerSchema>;
@@ -60,14 +56,14 @@ export type AuthField = "name" | "email" | "password";
 export type FieldErrors = Partial<Record<AuthField, string>>;
 
 /** Collapses Zod issues into one message per field, keeping the first. */
-export function fieldErrorsFrom(issues: readonly z.core.$ZodIssue[]): FieldErrors {
+export function fieldErrorsFrom(issues: readonly z.ZodIssue[]): FieldErrors {
   const errors: FieldErrors = {};
 
   for (const issue of issues) {
-    const field = issue.path[0];
+    const field = String(issue.path[0]);
     if (field !== "name" && field !== "email" && field !== "password") continue;
-    if (errors[field]) continue;
-    errors[field] = issue.message;
+    if (errors[field as AuthField]) continue;
+    errors[field as AuthField] = issue.message;
   }
 
   return errors;

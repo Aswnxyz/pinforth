@@ -1,53 +1,115 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. Every colour in the UI resolves through one of these, so the
- * light and dark palettes stay in sync and contrast is tuned in one place.
+ * Pinforth Design Tokens — Porcelain & Moss
+ * Light-first, high-contrast, calm workspace palette.
+ * Target WCAG 2.2 AA compliant across all text, borders, and interaction states.
+ *
+ * Light mode is the default identity regardless of OS/browser dark mode preferences.
  */
 :root {
   color-scheme: light;
 
-  --surface: oklch(0.977 0.003 255);
-  --surface-raised: oklch(1 0 0);
-  --surface-muted: oklch(0.955 0.004 255);
-  --foreground: oklch(0.24 0.013 255);
-  --muted-foreground: oklch(0.46 0.013 255);
-  --border: oklch(0.895 0.006 255);
-  /* Input borders carry the field boundary, so they need 3:1 against the field. */
-  --border-strong: oklch(0.66 0.01 255);
-  --accent: oklch(0.52 0.115 235);
-  --accent-foreground: oklch(1 0 0);
-  --danger: oklch(0.52 0.19 27);
+  --surface: #F6F8F4;
+  --surface-raised: #FFFFFF;
+  --surface-muted: #EEF3ED;
+  --surface-highlight: #E5EEE5;
+  --foreground: #24352B;
+  --muted-foreground: #53685A;
+  --border: #D9E3D9;
+  --border-strong: #859789;
+  --accent: #365B47;
+  --accent-hover: #294738;
+  --accent-foreground: #FFFFFF;
+  --accent-terracotta: #A65D3D;
+  --danger: #B84A39;
+  --danger-foreground: #FFFFFF;
+
+  /* Functional Status Tokens */
+  --status-new: #5E7166;
+  --status-new-foreground: #24352B;
+  --status-in-progress: #3B728C;
+  --status-in-progress-foreground: #1E4659;
+  --status-qa-pending: #C98A2C;
+  --status-qa-pending-foreground: #85530E;
+  --status-qa-pending-bg: #FDF6E7;
+  --status-qa-verified: #2E7D72;
+  --status-qa-verified-foreground: #1A544C;
+  --status-approved: #2E7D4E;
+  --status-approved-foreground: #1A4D2E;
+  --status-blocked: #B84A39;
+  --status-blocked-foreground: #8B2C1E;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+/*
+ * Dark theme tokens preserved for explicit user-controlled theme switching
+ * (activated via data-theme="dark" on the <html> root element).
+ * By default, Pinforth presents the light Porcelain & Moss identity
+ * even if the OS/browser preferences report dark mode.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --surface: oklch(0.18 0.012 255);
-    --surface-raised: oklch(0.225 0.014 255);
-    --surface-muted: oklch(0.265 0.014 255);
-    --foreground: oklch(0.96 0.004 255);
-    --muted-foreground: oklch(0.75 0.012 255);
-    --border: oklch(0.35 0.014 255);
-    --border-strong: oklch(0.53 0.018 255);
-    --accent: oklch(0.72 0.12 235);
-    --accent-foreground: oklch(0.18 0.012 255);
-    --danger: oklch(0.72 0.15 25);
-  }
+  --surface: #121A15;
+  --surface-raised: #1A241E;
+  --surface-muted: #222E27;
+  --surface-highlight: #2A3B31;
+  --foreground: #F0F4F1;
+  --muted-foreground: #9FB3A5;
+  --border: #2B3B30;
+  --border-strong: #637F6C;
+  --accent: #5E9E7A;
+  --accent-hover: #53926E;
+  --accent-foreground: #0E1611;
+  --accent-terracotta: #C47855;
+  --danger: #E06853;
+  --danger-foreground: #0E1611;
+
+  /* Functional Status Tokens (Dark Mode) */
+  --status-new: #8CA093;
+  --status-new-foreground: #F0F4F1;
+  --status-in-progress: #6BA8C7;
+  --status-in-progress-foreground: #F0F4F1;
+  --status-qa-pending: #E0A64E;
+  --status-qa-pending-foreground: #121A15;
+  --status-qa-pending-bg: #2E2516;
+  --status-qa-verified: #56B0A2;
+  --status-qa-verified-foreground: #F0F4F1;
+  --status-approved: #54B07B;
+  --status-approved-foreground: #F0F4F1;
+  --status-blocked: #E06853;
+  --status-blocked-foreground: #F0F4F1;
 }
 
 @theme inline {
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-highlight: var(--surface-highlight);
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-terracotta: var(--accent-terracotta);
   --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-status-new: var(--status-new);
+  --color-status-new-foreground: var(--status-new-foreground);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-in-progress-foreground: var(--status-in-progress-foreground);
+  --color-status-qa-pending: var(--status-qa-pending);
+  --color-status-qa-pending-foreground: var(--status-qa-pending-foreground);
+  --color-status-qa-pending-bg: var(--status-qa-pending-bg);
+  --color-status-qa-verified: var(--status-qa-verified);
+  --color-status-qa-verified-foreground: var(--status-qa-verified-foreground);
+  --color-status-approved: var(--status-approved);
+  --color-status-approved-foreground: var(--status-approved-foreground);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-blocked-foreground: var(--status-blocked-foreground);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

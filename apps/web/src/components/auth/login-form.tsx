@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { FormAlert } from "@/components/ui/form-alert";
 import { PasswordField } from "@/components/ui/password-field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { TextField } from "@/components/ui/text-field";
 import { POST_AUTH_REDIRECT, signInWithPassword } from "@/lib/auth/api";
+import { useAuth } from "@/lib/auth/context";
 import {
   emailSchema,
   fieldErrorsFrom,
@@ -18,10 +19,17 @@ import {
 
 export function LoginForm() {
   const router = useRouter();
+  const { isAuthenticated, isLoading, refreshUser } = useAuth();
   const [values, setValues] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push(POST_AUTH_REDIRECT);
+    }
+  }, [isLoading, isAuthenticated, router]);
 
   function handleChange(field: "email" | "password", value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -64,6 +72,7 @@ export function LoginForm() {
     setPending(false);
 
     if (outcome.status === "success") {
+      await refreshUser();
       router.push(POST_AUTH_REDIRECT);
       return;
     }
