@@ -23,6 +23,7 @@
     "lint:web": "pnpm --filter @pinforth/web lint",
     "typecheck:shared": "pnpm --filter @pinforth/shared typecheck",
     "test:api": "pnpm build:shared && pnpm --filter @pinforth/api test",
+    "test:web": "pnpm build:shared && pnpm --filter @pinforth/web test",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",

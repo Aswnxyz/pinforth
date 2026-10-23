@@ -17,19 +17,36 @@ export type AuthOutcome =
 
 /**
  * Where a signed-in user lands.
+ *
+ * The workspace entry point decides what happens next: onboarding for a new
+ * user, the only workspace when there is one, or the chooser when there are
+ * several.
  */
-export const POST_AUTH_REDIRECT = "/account";
+export const POST_AUTH_REDIRECT = "/w";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-let inFlightRefresh: Promise<boolean> | null = null;
+/** The message shown whenever the API could not be reached at all. */
+const NETWORK_ERROR_MESSAGE =
+  "Unable to connect to the server. Please check your connection and try again.";
+
+/**
+ * The result of trying to exchange the refresh token.
+ *
+ * `rejected` means the session is genuinely over. `unavailable` means the
+ * service could not be reached, which says nothing about the session: the
+ * refresh token may still be perfectly valid.
+ */
+export type RefreshOutcome = "refreshed" | "rejected" | "unavailable";
+
+let inFlightRefresh: Promise<RefreshOutcome> | null = null;
 
 /**
  * Single in-flight refresh coordinator to prevent race conditions during
  * rotating refresh token exchange.
  */
-export async function refreshSession(): Promise<boolean> {
+export async function refreshSession(): Promise<RefreshOutcome> {
   if (inFlightRefresh) {
     return inFlightRefresh;
   }
@@ -41,9 +58,16 @@ export async function refreshSession(): Promise<boolean> {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
       });
-      return res.ok;
+      if (res.ok) return "refreshed";
+
+      // Only an authorization answer proves the session is over. A rate limit
+      // or a server error says nothing about it, so the user is not signed out
+      // for those.
+      return res.status === 401 || res.status === 403
+        ? "rejected"
+        : "unavailable";
     } catch {
-      return false;
+      return "unavailable";
     } finally {
       inFlightRefresh = null;
     }
@@ -56,13 +80,18 @@ interface ApiFetchOptions extends RequestInit {
   retryOn401?: boolean;
 }
 
-interface ApiResult<T> {
+export interface ApiResult<T> {
   ok: boolean;
   status: number;
   data?: T;
   code?: string;
   message: string;
-  details?: Array<{ path: string; message: string }>;
+  /**
+   * Error details. Schema failures send an array of `{ path, message }`, but
+   * other bad requests send a single `{ field }` object, so callers narrow
+   * this themselves rather than trusting one shape.
+   */
+  details?: unknown;
 }
 
 /**
@@ -87,8 +116,21 @@ export async function apiFetch<T>(
 
     if (res.status === 401 && retryOn401) {
       const refreshed = await refreshSession();
-      if (refreshed) {
+
+      if (refreshed === "refreshed") {
         return apiFetch<T>(path, { ...options, retryOn401: false });
+      }
+
+      if (refreshed === "unavailable") {
+        // The service could not be reached, so the 401 says nothing about the
+        // session. Report it as a network failure instead, so callers do not
+        // treat a temporary outage as a revoked session.
+        return {
+          ok: false,
+          status: 0,
+          code: "NETWORK_ERROR",
+          message: NETWORK_ERROR_MESSAGE,
+        };
       }
     }
 
@@ -115,7 +157,7 @@ export async function apiFetch<T>(
       ok: false,
       status: 0,
       code: "NETWORK_ERROR",
-      message: "Unable to connect to the server. Please check your connection and try again.",
+      message: NETWORK_ERROR_MESSAGE,
     };
   }
 }
@@ -158,9 +200,10 @@ export async function signInWithPassword(
     };
   }
 
-  if (res.code === "VALIDATION_ERROR" && res.details) {
+  if (res.code === "VALIDATION_ERROR" && Array.isArray(res.details)) {
+    const details = res.details as Array<{ path: string; message: string }>;
     const fields: Partial<Record<AuthField, string>> = {};
-    for (const d of res.details) {
+    for (const d of details) {
       if (d.path === "email" || d.path === "password") {
         fields[d.path] = d.message;
       }
@@ -213,9 +256,10 @@ export async function registerWithPassword(
     };
   }
 
-  if (res.code === "VALIDATION_ERROR" && res.details) {
+  if (res.code === "VALIDATION_ERROR" && Array.isArray(res.details)) {
+    const details = res.details as Array<{ path: string; message: string }>;
     const fields: Partial<Record<AuthField, string>> = {};
-    for (const d of res.details) {
+    for (const d of details) {
       if (d.path === "name" || d.path === "email" || d.path === "password") {
         fields[d.path as AuthField] = d.message;
       }
@@ -226,35 +270,84 @@ export async function registerWithPassword(
   return { status: "rejected", message: res.message };
 }
 
-export async function getCurrentUser(): Promise<{
+/**
+ * The result of checking the current session.
+ *
+ * `unauthenticated` is only used when the API itself refused the session.
+ * `unavailable` means the check could not be completed, which says nothing
+ * about whether the user is signed in.
+ */
+export type CurrentUserOutcome =
+  | { status: "authenticated"; user: AuthUser; memberships: AuthMembership[] }
+  | { status: "unauthenticated" }
+  | { status: "unavailable"; message: string };
+
+type CurrentUserResponse = {
   user: AuthUser;
   memberships: AuthMembership[];
-} | null> {
-  const res = await apiFetch<{
-    user: AuthUser;
-    memberships: AuthMembership[];
-  }>("/api/v1/auth/me", {
+};
+
+/**
+ * Maps the `/auth/me` response to a session outcome.
+ *
+ * A confirmed 401 is the only evidence that the session is over. Every other
+ * failure — the service being down, unreachable or answering with something
+ * unexpected — leaves the session unknown.
+ */
+export function mapCurrentUserOutcome(
+  res: ApiResult<CurrentUserResponse>,
+): CurrentUserOutcome {
+  if (res.ok && res.data?.user) {
+    return {
+      status: "authenticated",
+      user: res.data.user,
+      memberships: res.data.memberships ?? [],
+    };
+  }
+
+  if (res.status === 401) {
+    return { status: "unauthenticated" };
+  }
+
+  return { status: "unavailable", message: res.message };
+}
+
+export async function getCurrentUser(): Promise<CurrentUserOutcome> {
+  const res = await apiFetch<CurrentUserResponse>("/api/v1/auth/me", {
     method: "GET",
   });
 
-  if (res.ok && res.data?.user) {
-    return res.data;
-  }
-
-  return null;
+  return mapCurrentUserOutcome(res);
 }
 
-export async function signOut(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    });
-    return res.ok;
-  } catch {
-    return false;
+/**
+ * The result of asking the server to end the session.
+ *
+ * Only a confirmed response proves that the session was revoked and the
+ * cookies cleared. Anything else leaves the session possibly alive, so the
+ * frontend must not pretend otherwise.
+ */
+export type SignOutOutcome =
+  | { status: "signed-out" }
+  | { status: "unavailable"; message: string };
+
+export async function signOut(): Promise<SignOutOutcome> {
+  const res = await apiFetch<null>("/api/v1/auth/logout", {
+    method: "POST",
+    // The route does not need a valid access token, and refreshing one on the
+    // way out would only prolong the session.
+    retryOn401: false,
+  });
+
+  if (res.ok) {
+    return { status: "signed-out" };
   }
+
+  return {
+    status: "unavailable",
+    message:
+      "We could not confirm your sign-out, so your session may still be active.",
+  };
 }
 
 export async function verifyEmail(
