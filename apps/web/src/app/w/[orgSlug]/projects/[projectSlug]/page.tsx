@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app/app-header";
 import { EditProjectForm } from "@/components/projects/edit-project-form";
+import { EnvironmentForm } from "@/components/projects/environment-form";
 import { EnvironmentList } from "@/components/projects/environment-list";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
@@ -16,7 +17,32 @@ import {
   canManageProjects,
   resolveOrganizationAccess,
 } from "@/lib/organizations/organization-access";
-import { updateProject, type UpdateProjectInput } from "@/lib/projects/api";
+import {
+  createEnvironment,
+  updateEnvironment,
+  updateProject,
+  type UpdateProjectInput,
+} from "@/lib/projects/api";
+import {
+  createEnvironmentCreationState,
+  describeEnvironmentCreateFailure,
+  describeCreationFollowUp,
+  environmentListed,
+  environmentMatches,
+  type EnvironmentCreationState,
+} from "@/lib/projects/environment-create";
+import {
+  createEnvironmentEditState,
+  describeEnvironmentEditFailure,
+  environmentChangesAreLive,
+  prepareEnvironmentUpdate,
+  ENVIRONMENT_NOT_REFLECTED_MESSAGE,
+  ENVIRONMENT_SAVED_DETAILS_NOT_LOADED_MESSAGE,
+  UNCONFIRMED_ENVIRONMENT_EDIT_MESSAGE,
+  type EnvironmentEditState,
+  type EnvironmentUpdateInput,
+} from "@/lib/projects/environment-edit";
+import type { EnvironmentValues } from "@/lib/projects/environment-validation";
 import {
   createEditProjectState,
   describeEditProjectFailure,
@@ -134,12 +160,41 @@ function ProjectDetailSection({
   const [edit, setEdit] = useState<EditProjectState | null>(null);
   const activeEdit = edit && edit.key === requestKey ? edit : null;
 
+  // The environment-creation session, isolated by the same request key as
+  // the editing session above. The two never share state: each is cleared by
+  // its own key check, so a form or its errors cannot cross projects or
+  // organizations, and a late POST response can never reach another screen.
+  const [adding, setAdding] = useState<EnvironmentCreationState | null>(null);
+  const activeAdding = adding && adding.key === requestKey ? adding : null;
+
+  // The environment-editing session, isolated the same way and further tied
+  // to the environment's backend id, so a form never shows another
+  // environment's values and a late PATCH/GET response can never reach
+  // another project's or environment's screen.
+  const [environmentEdit, setEnvironmentEdit] =
+    useState<EnvironmentEditState | null>(null);
+  const activeEnvironmentEdit =
+    environmentEdit && environmentEdit.key === requestKey
+      ? environmentEdit
+      : null;
+
   useEffect(() => {
     // The session was confirmed invalid by the API's refresh flow.
-    if (state.kind === "login" || activeEdit?.sessionExpired) {
+    if (
+      state.kind === "login" ||
+      activeEdit?.sessionExpired ||
+      activeAdding?.sessionExpired ||
+      activeEnvironmentEdit?.sessionExpired
+    ) {
       router.replace("/login");
     }
-  }, [state.kind, activeEdit?.sessionExpired, router]);
+  }, [
+    state.kind,
+    activeEdit?.sessionExpired,
+    activeAdding?.sessionExpired,
+    activeEnvironmentEdit?.sessionExpired,
+    router,
+  ]);
 
   if (state.kind === "loading" || state.kind === "login") {
     return <WorkspaceLoading />;
@@ -379,6 +434,398 @@ function ProjectDetailSection({
     );
   }
 
+  /**
+   * Reads the project back after a POST and reconciles the environment list.
+   *
+   * A confirmed creation is recognised by the returned environment's backend
+   * id; an unconfirmed one only by exact name and URL, which suggests but
+   * never proves which request created an environment. When the refreshed
+   * details do not (yet) contain it — or cannot be read at all — the entered
+   * values stay put and this read is offered again. The POST itself is never
+   * repeated automatically.
+   */
+  async function runCreateCheck(
+    key: string,
+    token: number,
+    values: EnvironmentValues | null,
+    postConfirmed: boolean,
+    createdId: string | null,
+  ) {
+    setAdding((current) =>
+      current && current.key === key
+        ? {
+            ...current,
+            phase: "checking",
+            message: null,
+            fields: null,
+            offerRefresh: false,
+            postConfirmed,
+            createdId,
+          }
+        : current,
+    );
+
+    const check = await loadProjectDetail(organization.id, projectSlug);
+
+    if (!guard.current.accept(token)) return;
+
+    if (check.kind === "login") {
+      setAdding((current) =>
+        current && current.key === key
+          ? { ...current, sessionExpired: true }
+          : current,
+      );
+      return;
+    }
+
+    if (check.kind === "ready") {
+      setResult({ key, state: check });
+
+      const reflected = createdId
+        ? environmentListed(createdId, check.project)
+        : values
+          ? environmentMatches(values, check.project)
+          : true;
+
+      if (reflected) {
+        setAdding(null);
+        return;
+      }
+    } else if (check.kind === "not-found") {
+      setAdding(null);
+      setRetryToken((token) => token + 1);
+      return;
+    }
+
+    // The refreshed details do not (yet) show the environment, or could not
+    // be read. Never a claim that the POST failed: the message depends on
+    // whether the POST itself was confirmed, and on whether the read-back
+    // even resolved.
+    setAdding((current) =>
+      current && current.key === key
+        ? {
+            ...current,
+            phase: "filling",
+            message: describeCreationFollowUp(
+              postConfirmed,
+              check.kind === "ready" ? "listed-missing" : "unreadable",
+            ),
+            offerRefresh: true,
+          }
+        : current,
+    );
+  }
+
+  async function handleCreate(values: EnvironmentValues) {
+    const key = requestKey;
+    const token = guard.current.start();
+
+    // A confirmed POST is never sent twice: while the created environment is
+    // missing from the details, saving again only re-reads the project.
+    if (activeAdding?.postConfirmed) {
+      await runCreateCheck(
+        key,
+        token,
+        activeAdding.values,
+        true,
+        activeAdding.createdId,
+      );
+      return;
+    }
+
+    setAdding((current) =>
+      current && current.key === key
+        ? {
+            ...current,
+            phase: "creating",
+            values,
+            postConfirmed: false,
+            createdId: null,
+            message: null,
+            fields: null,
+            offerRefresh: false,
+          }
+        : current,
+    );
+
+    const outcome = await createEnvironment(
+      organization.id,
+      projectSlug,
+      values,
+    );
+
+    // A newer request superseded this one (project or organization
+    // switched); its response must not touch this screen.
+    if (!guard.current.accept(token)) return;
+
+    if (outcome.status === "success") {
+      await runCreateCheck(key, token, values, true, outcome.data.id);
+      return;
+    }
+
+    const failure = describeEnvironmentCreateFailure(outcome);
+
+    if (failure.kind === "login") {
+      setAdding((current) =>
+        current && current.key === key
+          ? { ...current, sessionExpired: true }
+          : current,
+      );
+      return;
+    }
+
+    if (failure.kind === "gone") {
+      setAdding(null);
+      setRetryToken((token) => token + 1);
+      return;
+    }
+
+    // The entered values are preserved either way: a rejected creation can
+    // be corrected, and an unconfirmed one must be checked before retrying.
+    setAdding((current) =>
+      current && current.key === key
+        ? {
+            ...current,
+            phase: "filling",
+            message: failure.message,
+            fields: failure.kind === "message" ? failure.fields ?? null : null,
+            offerRefresh: failure.kind === "refresh",
+          }
+        : current,
+    );
+  }
+
+  function handleCreateRefresh() {
+    const key = requestKey;
+    const token = guard.current.start();
+
+    void runCreateCheck(
+      key,
+      token,
+      activeAdding?.values ?? null,
+      activeAdding?.postConfirmed ?? false,
+      activeAdding?.createdId ?? null,
+    );
+  }
+
+  /**
+   * Reads the project back after an environment PATCH and reconciles the
+   * screen.
+   *
+   * The submitted `changes` name exactly the fields that were sent, so the
+   * refreshed environment can be compared on those alone. A confirmed save
+   * whose values are live closes editing on backend-authoritative data; a
+   * refresh that still shows older values never claims the PATCH failed —
+   * the read may be behind — so the form keeps its values and offers this
+   * same read again. No automatic PATCH retry ever happens here.
+   */
+  async function runEnvironmentEditCheck(
+    key: string,
+    token: number,
+    environmentId: string,
+    changes: EnvironmentUpdateInput | null,
+    patchConfirmed: boolean,
+  ) {
+    setEnvironmentEdit((current) =>
+      current &&
+      current.key === key &&
+      current.environmentId === environmentId
+        ? {
+            ...current,
+            phase: "checking",
+            message: null,
+            fields: null,
+            offerRefresh: false,
+            changes,
+            patchConfirmed,
+          }
+        : current,
+    );
+
+    const check = await loadProjectDetail(organization.id, projectSlug);
+
+    if (!guard.current.accept(token)) return;
+
+    if (check.kind === "login") {
+      setEnvironmentEdit((current) =>
+        current &&
+        current.key === key &&
+        current.environmentId === environmentId
+          ? { ...current, sessionExpired: true }
+          : current,
+      );
+      return;
+    }
+
+    if (check.kind === "ready") {
+      setResult({ key, state: check });
+
+      const environment = check.project.environments.find(
+        (candidate) => candidate.id === environmentId,
+      );
+
+      if (
+        environment &&
+        (!changes || environmentChangesAreLive(changes, environment))
+      ) {
+        setEnvironmentEdit(null);
+        return;
+      }
+    } else if (check.kind === "not-found") {
+      // The project is gone or inaccessible; reloading shows its state.
+      setEnvironmentEdit(null);
+      setRetryToken((token) => token + 1);
+      return;
+    }
+
+    // Either the environment is no longer listed, its refreshed values do
+    // not yet reflect the save, or the read-back failed entirely. The
+    // entered values stay untouched and the same read is offered again.
+    setEnvironmentEdit((current) =>
+      current &&
+      current.key === key &&
+      current.environmentId === environmentId
+        ? {
+            ...current,
+            phase: "editing",
+            message: patchConfirmed
+              ? check.kind === "ready"
+                ? ENVIRONMENT_NOT_REFLECTED_MESSAGE
+                : ENVIRONMENT_SAVED_DETAILS_NOT_LOADED_MESSAGE
+              : UNCONFIRMED_ENVIRONMENT_EDIT_MESSAGE,
+            offerRefresh: true,
+          }
+        : current,
+    );
+  }
+
+  async function handleEnvironmentSave(values: EnvironmentValues) {
+    if (!activeEnvironmentEdit) return;
+
+    const key = requestKey;
+    const environmentId = activeEnvironmentEdit.environmentId;
+    const environment = project.environments.find(
+      (candidate) => candidate.id === environmentId,
+    );
+    if (!environment) return;
+
+    // The partial update is computed from the backend-authoritative values
+    // the form was prefilled with, so only real changes are sent.
+    const changes = prepareEnvironmentUpdate(
+      { name: environment.name, url: environment.url },
+      values,
+    );
+
+    // Nothing was edited, so there is no PATCH to send.
+    if (Object.keys(changes).length === 0) {
+      setEnvironmentEdit(null);
+      return;
+    }
+
+    const token = guard.current.start();
+
+    // A confirmed PATCH is never sent twice: while the refreshed details lag
+    // behind, saving again only re-reads the project.
+    if (activeEnvironmentEdit.patchConfirmed) {
+      await runEnvironmentEditCheck(
+        key,
+        token,
+        environmentId,
+        changes,
+        true,
+      );
+      return;
+    }
+
+    setEnvironmentEdit((current) =>
+      current &&
+      current.key === key &&
+      current.environmentId === environmentId
+        ? {
+            ...current,
+            phase: "saving",
+            changes,
+            patchConfirmed: false,
+            message: null,
+            fields: null,
+            offerRefresh: false,
+          }
+        : current,
+    );
+
+    const outcome = await updateEnvironment(
+      organization.id,
+      projectSlug,
+      environmentId,
+      changes,
+    );
+
+    // A newer request superseded this one (project or organization
+    // switched); its response must not touch this screen.
+    if (!guard.current.accept(token)) return;
+
+    if (outcome.status === "success") {
+      // The response carries the authoritative environment; its id is what
+      // the read-back is matched against.
+      await runEnvironmentEditCheck(
+        key,
+        token,
+        outcome.data.id,
+        changes,
+        true,
+      );
+      return;
+    }
+
+    const failure = describeEnvironmentEditFailure(outcome);
+
+    if (failure.kind === "login") {
+      setEnvironmentEdit((current) =>
+        current &&
+        current.key === key &&
+        current.environmentId === environmentId
+          ? { ...current, sessionExpired: true }
+          : current,
+      );
+      return;
+    }
+
+    if (failure.kind === "gone") {
+      setEnvironmentEdit(null);
+      setRetryToken((token) => token + 1);
+      return;
+    }
+
+    // The entered values are preserved either way: a rejected save can be
+    // corrected, and an unconfirmed one must be checked before retrying.
+    setEnvironmentEdit((current) =>
+      current &&
+      current.key === key &&
+      current.environmentId === environmentId
+        ? {
+            ...current,
+            phase: "editing",
+            message: failure.message,
+            fields: failure.kind === "message" ? failure.fields ?? null : null,
+            offerRefresh: failure.kind === "refresh",
+          }
+        : current,
+    );
+  }
+
+  function handleEnvironmentEditRefresh() {
+    const key = requestKey;
+    const token = guard.current.start();
+
+    void runEnvironmentEditCheck(
+      key,
+      token,
+      activeEnvironmentEdit?.environmentId ?? "",
+      activeEnvironmentEdit?.changes ?? null,
+      activeEnvironmentEdit?.patchConfirmed ?? false,
+    );
+  }
+
   const secondaryButtonClass =
     "inline-flex h-11 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-4 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -428,7 +875,15 @@ function ProjectDetailSection({
         </div>
       ) : (
         <>
-          {canManageProjects(organization.role) ? (
+          {/* One form at a time: while an environment is being added, the
+              project-edit action stays hidden so the two sessions cannot
+              compete for the same request guard. */}
+          {/* One form at a time: while an environment is being added or
+              edited, the project-edit action stays hidden so the sessions
+              cannot compete for the same request guard. */}
+          {canManageProjects(organization.role) &&
+          !activeAdding &&
+          !activeEnvironmentEdit ? (
             <div className="flex justify-end">
               <button
                 type="button"
@@ -445,10 +900,129 @@ function ProjectDetailSection({
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">
-          Website environments
-        </h2>
-        <EnvironmentList environments={project.environments} />
+        {/* flex-wrap lets the action drop to its own full-width line on
+            narrow screens instead of overflowing the viewport. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex-1 text-lg font-semibold tracking-tight text-foreground">
+            Website environments
+          </h2>
+
+          {/* One form at a time: creation and project editing stay hidden
+              while an environment edit is open. */}
+          {canManageProjects(organization.role) &&
+          !activeEdit &&
+          !activeEnvironmentEdit ? (
+            <button
+              type="button"
+              onClick={() => setAdding(createEnvironmentCreationState(requestKey))}
+              className={secondaryButtonClass}
+            >
+              Add environment
+            </button>
+          ) : null}
+        </div>
+
+        {/* The list stays visible while editing. Edit actions appear only for
+            managers and only when no other form owns the screen; each is
+            named by its environment's URL so duplicate names stay
+            distinguishable. */}
+        <EnvironmentList
+          environments={project.environments}
+          onEdit={
+            canManageProjects(organization.role) &&
+            !activeEdit &&
+            !activeAdding
+              ? (environment) => {
+                  if (!environment.id) return;
+                  setEnvironmentEdit(
+                    createEnvironmentEditState(requestKey, environment.id),
+                  );
+                }
+              : undefined
+          }
+        />
+
+        {activeAdding ? (
+          <div className="space-y-4">
+            {activeAdding.message ? (
+              <div className="space-y-3">
+                <FormAlert>{activeAdding.message}</FormAlert>
+
+                {activeAdding.offerRefresh ? (
+                  <button
+                    type="button"
+                    onClick={handleCreateRefresh}
+                    className={secondaryButtonClass}
+                  >
+                    Refresh project
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Create mode starts empty. Remounts with the project, so
+                reopening never carries over an earlier session's values. */}
+            <EnvironmentForm
+              key={requestKey}
+              mode="create"
+              onSubmit={(values) => {
+                void handleCreate(values);
+              }}
+              pending={
+                activeAdding.phase === "creating" ||
+                activeAdding.phase === "checking"
+              }
+              fieldErrors={activeAdding.fields}
+              onCancel={() => setAdding(null)}
+            />
+          </div>
+        ) : null}
+
+        {activeEnvironmentEdit ? (
+          <div className="space-y-4">
+            {activeEnvironmentEdit.message ? (
+              <div className="space-y-3">
+                <FormAlert>{activeEnvironmentEdit.message}</FormAlert>
+
+                {activeEnvironmentEdit.offerRefresh ? (
+                  <button
+                    type="button"
+                    onClick={handleEnvironmentEditRefresh}
+                    className={secondaryButtonClass}
+                  >
+                    Refresh project
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Prefilled from the backend-authoritative row rather than the
+                user's earlier typing. Keyed by environment id, so picking a
+                different row remounts with that environment's values and an
+                in-progress edit is never overwritten by an effect. */}
+            <EnvironmentForm
+              key={activeEnvironmentEdit.environmentId}
+              mode="edit"
+              initialValues={(() => {
+                const environment = project.environments.find(
+                  (candidate) => candidate.id === activeEnvironmentEdit.environmentId,
+                );
+                return environment
+                  ? { name: environment.name, url: environment.url }
+                  : undefined;
+              })()}
+              onSubmit={(values) => {
+                void handleEnvironmentSave(values);
+              }}
+              pending={
+                activeEnvironmentEdit.phase === "saving" ||
+                activeEnvironmentEdit.phase === "checking"
+              }
+              fieldErrors={activeEnvironmentEdit.fields}
+              onCancel={() => setEnvironmentEdit(null)}
+            />
+          </div>
+        ) : null}
       </section>
     </div>
   );

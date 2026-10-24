@@ -20,10 +20,31 @@ import {
   projectDestination,
 } from "@/lib/projects/project-creation";
 import {
+  describeCreationFollowUp,
+  describeEnvironmentCreateFailure,
+  environmentListed,
+  environmentMatches,
+  ENVIRONMENT_CREATED_DETAILS_NOT_LOADED_MESSAGE,
+  ENVIRONMENT_CREATED_NOT_SHOWN_MESSAGE,
+  UNCONFIRMED_CREATE_MESSAGE,
+} from "@/lib/projects/environment-create";
+import {
+  createEnvironmentEditState,
+  describeEnvironmentEditFailure,
+  environmentChangesAreLive,
+  prepareEnvironmentUpdate,
+  UNCONFIRMED_ENVIRONMENT_EDIT_MESSAGE,
+} from "@/lib/projects/environment-edit";
+import {
   createRequestGuard,
   loadProjectDetail,
   resolveProjectDetailState,
 } from "@/lib/projects/project-detail";
+import {
+  loadProjectList,
+  resolveProjectListState,
+  type ProjectListState,
+} from "@/lib/projects/project-list";
 import { safeWebsiteUrl } from "@/lib/projects/urls";
 
 /**
@@ -1159,5 +1180,510 @@ describe("changesAreLive", () => {
 
   it("accepts an empty change set — there is nothing to land", () => {
     expect(changesAreLive({}, project)).toBe(true);
+  });
+});
+
+describe("describeEnvironmentCreateFailure", () => {
+  it("shows the backend message and field errors for a rejected creation", () => {
+    expect(
+      describeEnvironmentCreateFailure({
+        status: "rejected",
+        message: "Check the environment details.",
+        fields: { url: "This URL is already in use." },
+      }),
+    ).toEqual({
+      kind: "message",
+      message: "Check the environment details.",
+      fields: { url: "This URL is already in use." },
+    });
+  });
+
+  it("shows the backend message when the role forbids creating", () => {
+    expect(
+      describeEnvironmentCreateFailure({
+        status: "forbidden",
+        message: "Your role does not allow this",
+      }),
+    ).toEqual({ kind: "message", message: "Your role does not allow this" });
+  });
+
+  it("shows the backend message for a conflict", () => {
+    expect(
+      describeEnvironmentCreateFailure({
+        status: "conflict",
+        message: "This environment already exists.",
+      }),
+    ).toEqual({ kind: "message", message: "This environment already exists." });
+  });
+
+  it("asks the page to sign in only for a confirmed invalid session", () => {
+    expect(describeEnvironmentCreateFailure({ status: "unauthorized" })).toEqual(
+      { kind: "login" },
+    );
+  });
+
+  it("reports a missing or inaccessible project as gone", () => {
+    expect(describeEnvironmentCreateFailure({ status: "not-found" })).toEqual({
+      kind: "gone",
+    });
+  });
+
+  it("treats an unanswered POST as unconfirmed, never as failed", () => {
+    // A network failure can hide a POST that was applied server-side, so the
+    // outcome offers a refresh and forbids an automatic retry.
+    expect(
+      describeEnvironmentCreateFailure({
+        status: "unavailable",
+        message: "We could not reach Pinforth.",
+      }),
+    ).toEqual({ kind: "refresh", message: UNCONFIRMED_CREATE_MESSAGE });
+  });
+});
+
+describe("environment reconciliation", () => {
+  const project = {
+    ...projectSummary,
+    environments: [environment],
+  };
+
+  it("recognises the created environment by its backend id", () => {
+    expect(environmentListed(environment.id, project)).toBe(true);
+  });
+
+  it("does not accept an equal name and url as proof of identity", () => {
+    // Another id means another environment, whatever its values look like —
+    // only the confirmed POST's id is conclusive.
+    const twin = { ...environment, id: "9d4e2f1a-5b3c-4a7e-8f0d-2c1b0a9e7d65" };
+
+    expect(environmentListed(twin.id, { ...project, environments: [twin] })).toBe(
+      true,
+    );
+    expect(environmentListed(twin.id, project)).toBe(false);
+  });
+
+  it("matches an unconfirmed creation only on exact name and url", () => {
+    expect(
+      environmentMatches(
+        { name: environment.name, url: environment.url },
+        project,
+      ),
+    ).toBe(true);
+
+    expect(
+      environmentMatches(
+        { name: environment.name, url: "https://another.example.com" },
+        project,
+      ),
+    ).toBe(false);
+
+    expect(
+      environmentMatches(
+        { name: "Production", url: environment.url },
+        project,
+      ),
+    ).toBe(false);
+  });
+});
+
+/**
+ * Environment editing: the partial-update preparer, the PATCH failure mapper
+ * and the reconciliation comparator. Mirrors the project-edit suites — pure
+ * helpers, no fetch.
+ */
+
+describe("prepareEnvironmentUpdate", () => {
+  const initial = { name: environment.name, url: environment.url };
+
+  it("sends only the name when only the name changed", () => {
+    expect(
+      prepareEnvironmentUpdate(initial, {
+        name: "Staging 2",
+        url: initial.url,
+      }),
+    ).toEqual({ name: "Staging 2" });
+  });
+
+  it("sends only the url when only the url changed", () => {
+    expect(
+      prepareEnvironmentUpdate(initial, {
+        name: initial.name,
+        url: "https://qa.example.com",
+      }),
+    ).toEqual({ url: "https://qa.example.com" });
+  });
+
+  it("sends both fields when both changed", () => {
+    expect(
+      prepareEnvironmentUpdate(initial, {
+        name: "Preview",
+        url: "https://preview.example.com",
+      }),
+    ).toEqual({
+      name: "Preview",
+      url: "https://preview.example.com",
+    });
+  });
+
+  it("returns an empty change set when nothing changed", () => {
+    // The page must not issue a PATCH at all for this result.
+    expect(prepareEnvironmentUpdate(initial, { ...initial })).toEqual({});
+  });
+
+  it("trims values, and whitespace-only differences are not changes", () => {
+    expect(
+      prepareEnvironmentUpdate(initial, {
+        name: "  Staging 2  ",
+        url: "  https://qa.example.com  ",
+      }),
+    ).toEqual({
+      name: "Staging 2",
+      url: "https://qa.example.com",
+    });
+
+    expect(
+      prepareEnvironmentUpdate(initial, {
+        name: ` ${initial.name} `,
+        url: ` ${initial.url} `,
+      }),
+    ).toEqual({});
+  });
+
+  it("never puts the id, slug or project identity in the body", () => {
+    // The id addresses the PATCH request; it is never part of its payload.
+    const changes = prepareEnvironmentUpdate(initial, {
+      name: "Staging 2",
+      url: "https://qa.example.com",
+    });
+
+    expect(Object.keys(changes).sort()).toEqual(["name", "url"]);
+  });
+});
+
+describe("describeEnvironmentEditFailure", () => {
+  it("shows the backend message and field errors for a rejected edit", () => {
+    expect(
+      describeEnvironmentEditFailure({
+        status: "rejected",
+        message: "Check the environment details.",
+        fields: { url: "Enter a valid HTTP or HTTPS URL." },
+      }),
+    ).toEqual({
+      kind: "message",
+      message: "Check the environment details.",
+      fields: { url: "Enter a valid HTTP or HTTPS URL." },
+    });
+  });
+
+  it("shows the backend message for a forbidden edit", () => {
+    expect(
+      describeEnvironmentEditFailure({
+        status: "forbidden",
+        message: "Your role does not allow this",
+      }),
+    ).toEqual({ kind: "message", message: "Your role does not allow this" });
+  });
+
+  it("shows the backend message for a conflict", () => {
+    expect(
+      describeEnvironmentEditFailure({
+        status: "conflict",
+        message: "The environment changed elsewhere.",
+      }),
+    ).toEqual({
+      kind: "message",
+      message: "The environment changed elsewhere.",
+    });
+  });
+
+  it("asks the page to sign in only for a confirmed invalid session", () => {
+    expect(describeEnvironmentEditFailure({ status: "unauthorized" })).toEqual({
+      kind: "login",
+    });
+  });
+
+  it("reports a missing or inaccessible project or environment as gone", () => {
+    expect(describeEnvironmentEditFailure({ status: "not-found" })).toEqual({
+      kind: "gone",
+    });
+  });
+
+  it("treats an unanswered PATCH as unconfirmed, never as failed", () => {
+    // A network failure can hide a PATCH that was applied server-side, so
+    // the message says so and asks for a GET — it never claims failure and
+    // never authorises an automatic retry.
+    expect(
+      describeEnvironmentEditFailure({
+        status: "unavailable",
+        message: "The project service is unreachable.",
+      }),
+    ).toEqual({
+      kind: "refresh",
+      message: UNCONFIRMED_ENVIRONMENT_EDIT_MESSAGE,
+    });
+  });
+});
+
+describe("environmentChangesAreLive", () => {
+  it("confirms a saved name against the refreshed environment", () => {
+    expect(
+      environmentChangesAreLive(
+        { name: "Staging 2" },
+        { ...environment, name: "Staging 2" },
+      ),
+    ).toBe(true);
+  });
+
+  it("flags a refreshed environment that still shows the old name", () => {
+    // Not proof the PATCH failed — the read may simply be behind, so the
+    // page keeps its values and its refresh offer.
+    expect(
+      environmentChangesAreLive({ name: "Staging 2" }, environment),
+    ).toBe(false);
+  });
+
+  it("checks only the fields that were sent", () => {
+    expect(
+      environmentChangesAreLive(
+        { url: "https://qa.example.com" },
+        {
+          ...environment,
+          name: "Renamed Elsewhere",
+          url: "https://qa.example.com",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts an empty change set — there is nothing to land", () => {
+    expect(environmentChangesAreLive({}, environment)).toBe(true);
+  });
+});
+
+describe("describeCreationFollowUp", () => {
+  it("distinguishes a listed-but-missing environment from an unreadable read-back", () => {
+    expect(describeCreationFollowUp(true, "listed-missing")).toBe(
+      ENVIRONMENT_CREATED_NOT_SHOWN_MESSAGE,
+    );
+
+    expect(describeCreationFollowUp(true, "unreadable")).toBe(
+      ENVIRONMENT_CREATED_DETAILS_NOT_LOADED_MESSAGE,
+    );
+  });
+
+  it("never claims anything about an unconfirmed POST", () => {
+    expect(describeCreationFollowUp(false, "listed-missing")).toBe(
+      UNCONFIRMED_CREATE_MESSAGE,
+    );
+    expect(describeCreationFollowUp(false, "unreadable")).toBe(
+      UNCONFIRMED_CREATE_MESSAGE,
+    );
+  });
+});
+
+describe("createEnvironmentEditState", () => {
+  it("starts idle, tied to its request key and environment id", () => {
+    expect(createEnvironmentEditState("org|project", environment.id)).toEqual({
+      key: "org|project",
+      environmentId: environment.id,
+      phase: "editing",
+      changes: null,
+      patchConfirmed: false,
+      message: null,
+      fields: null,
+      offerRefresh: false,
+      sessionExpired: false,
+    });
+  });
+});
+
+/**
+ * The project list route: how a `listProjects` outcome becomes a renderable
+ * state, and how the page pattern (guard + request key) keeps a superseded
+ * organization's response from ever writing state.
+ */
+
+describe("resolveProjectListState", () => {
+  it("keeps a confirmed populated list as ready, passing backend slugs through", () => {
+    // The ready projects carry the backend-returned slugs untouched — they
+    // are what the list rows build their detail links from.
+    expect(
+      resolveProjectListState({ status: "success", data: [projectSummary] }),
+    ).toEqual({ kind: "ready", projects: [projectSummary] });
+  });
+
+  it("keeps a confirmed empty list as ready — the only source of “No projects yet.”", () => {
+    expect(resolveProjectListState({ status: "success", data: [] })).toEqual({
+      kind: "ready",
+      projects: [],
+    });
+  });
+
+  it("maps a 404 to not-found, never to an empty list", () => {
+    expect(resolveProjectListState({ status: "not-found" })).toEqual({
+      kind: "not-found",
+    });
+  });
+
+  it("maps a forbidden list to forbidden with the backend message", () => {
+    expect(
+      resolveProjectListState({
+        status: "forbidden",
+        message: "Your role does not allow this",
+      }),
+    ).toEqual({
+      kind: "forbidden",
+      message: "Your role does not allow this",
+    });
+  });
+
+  it("maps an outage to unavailable — retryable, and never a logout", () => {
+    expect(
+      resolveProjectListState({ status: "unavailable", message: "down" }),
+    ).toEqual({ kind: "unavailable", message: "down" });
+  });
+
+  it("treats a rejected or conflicting GET as unavailable, not as an empty list", () => {
+    expect(
+      resolveProjectListState({ status: "rejected", message: "nope" }).kind,
+    ).toBe("unavailable");
+    expect(
+      resolveProjectListState({ status: "conflict", message: "nope" }).kind,
+    ).toBe("unavailable");
+  });
+
+  it("asks the page to sign in only for a confirmed invalid session", () => {
+    expect(resolveProjectListState({ status: "unauthorized" })).toEqual({
+      kind: "login",
+    });
+  });
+});
+
+describe("loadProjectList", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("requests the organization's project endpoint by backend id", async () => {
+    const calls = stubFetch(() =>
+      jsonResponse({ success: true, data: { projects: [projectSummary] } }, 200),
+    );
+
+    await expect(loadProjectList(ORG_ID)).resolves.toEqual({
+      kind: "ready",
+      projects: [projectSummary],
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0].url).pathname).toBe(BASE);
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].init.credentials).toBe("include");
+  });
+
+  it("issues a fresh GET on every call, so Retry never reuses a response", async () => {
+    const calls = stubFetch(() =>
+      jsonResponse({ success: true, data: { projects: [] } }, 200),
+    );
+
+    await loadProjectList(ORG_ID);
+    await loadProjectList(ORG_ID);
+
+    expect(calls).toHaveLength(2);
+  });
+
+  it("maps a 404 to not-found, never to an empty list", async () => {
+    stubFetch(() =>
+      jsonResponse({ success: false, code: "NOT_FOUND", message: "no" }, 404),
+    );
+
+    await expect(loadProjectList(ORG_ID)).resolves.toEqual({
+      kind: "not-found",
+    });
+  });
+
+  it("maps a network failure to unavailable, never to login or empty", async () => {
+    stubFetch(() => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    await expect(loadProjectList(ORG_ID)).resolves.toMatchObject({
+      kind: "unavailable",
+    });
+  });
+
+  it("maps a forbidden list to forbidden with the backend message", async () => {
+    stubFetch(() =>
+      jsonResponse(
+        {
+          success: false,
+          code: "FORBIDDEN",
+          message: "Your role does not allow this",
+        },
+        403,
+      ),
+    );
+
+    await expect(loadProjectList(ORG_ID)).resolves.toEqual({
+      kind: "forbidden",
+      message: "Your role does not allow this",
+    });
+  });
+
+  it("never writes a superseded organization's late response", async () => {
+    // Mirrors the page: an org switch mid-flight starts a second request,
+    // and only the newest token may write state. Both responses arrive
+    // afterwards; the older one must be dropped, so one workspace's project
+    // list can never render under another.
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn<(input: unknown, init?: RequestInit) => Promise<Response>>(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const guard = createRequestGuard();
+    const writes: Array<{ token: number; state: ProjectListState }> = [];
+
+    const request = (orgId: string) => {
+      const token = guard.start();
+      return loadProjectList(orgId).then((state) => {
+        if (guard.accept(token)) writes.push({ token, state });
+      });
+    };
+
+    const oldRequest = request(ORG_ID);
+    const newRequest = request("9d8c7b6a-5e4f-4a3b-2c1d-0e9f8a7b6c5d");
+
+    // Let both requests reach the network before answering either.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolvers).toHaveLength(2);
+    // Each request addressed its own organization by backend id.
+    expect(new URL(String(fetchMock.mock.calls[0][0])).pathname).toBe(BASE);
+    expect(new URL(String(fetchMock.mock.calls[1][0])).pathname).toBe(
+      "/api/v1/organizations/9d8c7b6a-5e4f-4a3b-2c1d-0e9f8a7b6c5d/projects",
+    );
+
+    resolvers[0](jsonResponse({ success: true, data: { projects: [projectSummary] } }, 200));
+    resolvers[1](
+      jsonResponse(
+        {
+          success: true,
+          data: {
+            projects: [{ ...projectSummary, slug: "other-workspace-project", name: "Other" }],
+          },
+        },
+        200,
+      ),
+    );
+
+    await Promise.all([oldRequest, newRequest]);
+
+    // Only the newest request wrote, and it wrote its own workspace's data.
+    expect(writes).toHaveLength(1);
+    expect(writes[0].state).toMatchObject({
+      kind: "ready",
+      projects: [{ slug: "other-workspace-project" }],
+    });
   });
 });

@@ -5,9 +5,11 @@ import { safeWebsiteUrl } from "@/lib/projects/urls";
  *
  * Structurally compatible with the agreed `Environment` contract. `createdAt`
  * is optional here: the date is a nicety, and a caller that lacks it still
- * renders correctly.
+ * renders correctly. `id` is optional so a display-only caller still works;
+ * the editing page passes the backend id, which identifies the row.
  */
 export interface EnvironmentListItem {
+  id?: string;
   name: string;
   url: string;
   /** ISO timestamp, formatted as a date for display when present. */
@@ -17,13 +19,18 @@ export interface EnvironmentListItem {
 /**
  * The website environments configured for a project.
  *
- * Presentational and read-only: creation and editing arrive with their forms
- * and real API integration, so no inert controls are rendered here.
+ * Presentational: it makes no requests and owns no state. When the caller
+ * provides `onEdit`, each row gains an Edit action and the list is no longer
+ * read-only — the callback receives the row so the caller can open the form
+ * against that environment's authoritative id.
  */
 export function EnvironmentList({
   environments,
+  onEdit,
 }: {
   environments: readonly EnvironmentListItem[];
+  /** Receives the clicked row; absent renders a read-only list. */
+  onEdit?: (environment: EnvironmentListItem) => void;
 }) {
   if (environments.length === 0) {
     return (
@@ -41,7 +48,10 @@ export function EnvironmentList({
         const href = safeWebsiteUrl(environment.url);
 
         return (
-          <li key={environment.url} className="px-4 py-3">
+          <li
+            key={environment.id ?? environment.url}
+            className="flex items-start justify-between gap-3 px-4 py-3"
+          >
             <div className="min-w-0">
               <span className="block truncate text-sm font-medium text-foreground">
                 {environment.name}
@@ -80,6 +90,20 @@ export function EnvironmentList({
                 </span>
               ) : null}
             </div>
+
+            {onEdit ? (
+              <button
+                type="button"
+                onClick={() => onEdit(environment)}
+                // Names the URL, not just the display name: two environments
+                // may share a name, and each control must be distinguishable
+                // when read aloud.
+                aria-label={`Edit the ${environment.name} environment at ${environment.url}`}
+                className="inline-flex h-9 shrink-0 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                Edit
+              </button>
+            ) : null}
           </li>
         );
       })}
