@@ -319,13 +319,37 @@ Base path: `/api/v1/organizations`. Every route requires authentication.
 | `GET /` | any user | The caller's organizations, with their role in each |
 | `GET /:orgId` | member | Organization details and the caller's role |
 | `PATCH /:orgId` | `OWNER`, `ADMIN` | `{ name }`. Renames the organization. The slug can't be changed |
-| `GET /:orgId/members` | member | Members, with their roles and join dates |
+| `GET /:orgId/members` | member | Members, with their roles and join dates. See the Members API below |
 
 **Access rules:** routes under `/:orgId` use `requireOrgRole(...roles)` after `requireAuth`.
 
 - **Not a member:** `404 Organization not found`. This is the same response as an organization that doesn't exist, so IDs can't be probed.
 - **Member without the required role:** `403 FORBIDDEN`.
 - Membership is checked on every request, so removing a member takes effect immediately.
+
+### Members API
+
+Base path: `/api/v1/organizations/:orgId/members`. Every route requires authentication and organization membership.
+
+| Endpoint | Who | Description |
+|---|---|---|
+| `GET /` | member | Members, oldest first. Each is `{ id, role, joinedAt, user { id, name, email }, isYou }` |
+| `PATCH /:memberId` | `OWNER` | `{ role }` (`OWNER`, `ADMIN` or `MEMBER`). Returns `{ member }` |
+| `DELETE /:memberId` | see below | Removes a member. Use your own member `id` to leave |
+
+**Who can remove whom**
+- Anyone can remove **themselves** (leave).
+- An `OWNER` can remove anyone.
+- An `ADMIN` can remove `MEMBER`s only.
+- A `MEMBER` can't remove anyone else.
+
+**Last-owner protection:** demoting, removing or leaving as the organization's last `OWNER` returns `409 LAST_OWNER`. Make someone else an owner first.
+
+The check runs in a transaction that locks every owner row and re-reads the caller's role, so two owners stepping down at once can never leave zero owners, and an owner demoted mid-request can't finish an owner-only action.
+
+**Errors:**
+- Unknown member, or one from another organization: `404 Member not found`.
+- Not allowed: `403 FORBIDDEN`.
 
 ### Projects and Environments API
 
@@ -389,6 +413,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
 - Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
 - Projects and website environments: create, list, view, update, with generated slugs and per-organization isolation.
+- Member management: change roles, remove members, leave, with last-owner protection.
 
 **Upcoming**
 - Organization invitations and member role management.

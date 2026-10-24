@@ -97,23 +97,3 @@ export async function updateOrganization(organizationId, role, input) {
 
   return toOrganization(org, role);
 }
-
-export async function listMembers(organizationId) {
-  const members = await prisma.organizationMember.findMany({
-    where: { organizationId },
-    select: {
-      id: true,
-      role: true,
-      createdAt: true,
-      user: { select: { id: true, name: true, email: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return members.map((member) => ({
-    id: member.id,
-    role: member.role,
-    joinedAt: member.createdAt.toISOString(),
-    user: member.user,
-  }));
-}
