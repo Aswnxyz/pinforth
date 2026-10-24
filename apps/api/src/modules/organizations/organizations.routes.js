@@ -3,10 +3,10 @@ import { Router } from "express";
 import { getAuth, requireAuth } from "../../middleware/require-auth.js";
 import { getMembership, requireOrgRole } from "../../middleware/require-org-role.js";
 import projectRoutes from "../projects/projects.routes.js";
+import memberRoutes from "./members.routes.js";
 import {
   createOrganization,
   getOrganization,
-  listMembers,
   listMyOrganizations,
   updateOrganization,
 } from "./organizations.service.js";
@@ -43,13 +43,8 @@ router.patch("/:orgId", requireOrgRole("OWNER", "ADMIN"), async (req, res) => {
   res.status(200).json({ success: true, data: { organization } });
 });
 
-router.get("/:orgId/members", requireOrgRole(), async (req, res) => {
-  const members = await listMembers(getMembership(req).organizationId);
-
-  res.status(200).json({ success: true, data: { members } });
-});
-
-// Membership is checked once here; the projects router checks roles per route.
+// Membership is checked once here; the nested routers check roles per route.
+router.use("/:orgId/members", requireOrgRole(), memberRoutes);
 router.use("/:orgId/projects", requireOrgRole(), projectRoutes);
 
 export default router;
