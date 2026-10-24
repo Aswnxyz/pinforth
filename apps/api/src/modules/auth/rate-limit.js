@@ -3,7 +3,8 @@ import { env } from "../../config/env.js";
 import { tooManyRequests } from "../../lib/errors.js";
 
 // In-memory store: fine for one API instance. Swap in a Redis store before scaling out.
-const limiter = (options) =>
+// Exported so other modules build their limiters the same way.
+export const limiter = (options) =>
   rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
@@ -12,7 +13,7 @@ const limiter = (options) =>
     ...options,
   });
 
-const clientIp = (req) => ipKeyGenerator(req.ip ?? "unknown");
+export const clientIp = (req) => ipKeyGenerator(req.ip ?? "unknown");
 
 const emailFromBody = (req) =>
   typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";

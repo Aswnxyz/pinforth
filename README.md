@@ -86,6 +86,7 @@ pinforth/
 │       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole, requireProject
 │       │   ├── modules/
 │       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
+│       │   │   ├── invitations/  # Org invites and the accept flow
 │       │   │   ├── organizations/
 │       │   │   └── projects/  # Projects and environments
 │       │   └── scripts/
@@ -272,6 +273,7 @@ The API validates its environment on startup and exits with a clear message if a
 | `SMTP_USER` / `SMTP_PASS` | (unset) | SMTP credentials, if your provider needs them |
 | `PASSWORD_RESET_TTL_MINUTES` | `30` | Reset link lifetime |
 | `EMAIL_VERIFY_TTL_HOURS` | `24` | Email verification link lifetime |
+| `INVITATION_TTL_DAYS` | `7` | Organization invite link lifetime |
 
 ### Local email
 
@@ -358,6 +360,46 @@ Base path: `/api/v1/organizations/:orgId/projects`. Every route requires authent
   - A `MEMBER` trying to write: `403`.
   - A project slug or environment ID from another organization or project: `404 Project not found` / `404 Environment not found`.
 
+### Invitations API
+
+**Organization side:** `/api/v1/organizations/:orgId/invitations`, for OWNER and ADMIN only.
+
+| Endpoint | Description |
+|---|---|
+| `POST /` | `{ email, role? }`. `role` is `ADMIN` or `MEMBER` (default `MEMBER`). Emails an invite link valid for 7 days. The inviter needs a **verified email**. Returns `{ invitation }` (201) |
+| `GET /` | Open invites (`pending` or `expired`), newest first |
+| `POST /:invitationId/resend` | New link and new 7-day expiry. The old link stops working. Limited to 3 per invite per hour |
+| `DELETE /:invitationId` | Revokes the invite. The row is kept as history |
+
+`Invitation`: `id`, `email`, `role`, `status` (`pending` · `expired` · `accepted` · `revoked`), `invitedBy { id, name } | null`, `expiresAt`, `createdAt`.
+
+**Invite link side:** `/api/v1/invitations`
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `GET /:token` | none | Preview for the invite page: `{ organization { name, slug }, email, role, invitedBy { name } | null, expiresAt }` |
+| `POST /accept` | access | `{ token }`. Joins the organization and returns `{ organization { id, name, slug, role } }`. Safe to repeat |
+
+The email links to `${APP_URL}/invite?token=…`, and that page must send `Referrer-Policy: no-referrer`.
+
+**Rules**
+- **Invites can't grant `OWNER`.** An existing OWNER promotes people after they join.
+- **A link only works for the email it was sent to.** Accepting with another account returns `403 INVITATION_EMAIL_MISMATCH`.
+- **Accepting marks the email as verified,** because opening the link proves ownership. An existing membership keeps its current role.
+- **One pending invite per email per organization,** enforced with a per-email database lock, so simultaneous invites can't create duplicates.
+
+**Errors**
+
+| Code | Status | When |
+|---|---|---|
+| `ALREADY_MEMBER` | 409 | The person is already in the organization |
+| `INVITATION_PENDING` | 409 | An invite is already pending. `details.invitationId` says which; resend it |
+| `INVITATION_INVALID` | 404 | Unknown, revoked or already-used link |
+| `INVITATION_EXPIRED` | 410 | Expired link |
+| `INVITATION_EMAIL_MISMATCH` | 403 | Logged in as a different email than the one invited |
+
+**Rate limits:** invites are capped at 30 per organization per hour and 10 per inviter per hour. Preview and accept are limited per IP.
+
 When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
 
 Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
@@ -389,6 +431,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
 - Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
 - Projects and website environments: create, list, view, update, with generated slugs and per-organization isolation.
+- Organization invitations by email: invite, resend, revoke, preview and accept.
 
 **Upcoming**
 - Organization invitations and member role management.

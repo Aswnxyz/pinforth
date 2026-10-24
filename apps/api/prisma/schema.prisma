@@ -30,9 +30,11 @@ model User {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
 
-  memberships        OrganizationMember[]
-  sessions           Session[]
-  verificationTokens VerificationToken[]
+  memberships         OrganizationMember[]
+  sessions            Session[]
+  verificationTokens  VerificationToken[]
+  invitationsSent     Invitation[]         @relation("InvitationInviter")
+  invitationsAccepted Invitation[]         @relation("InvitationAcceptor")
 }
 
 // One row per refresh token. Rotation creates a new row in the same family;
@@ -81,8 +83,37 @@ model Organization {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  members  OrganizationMember[]
-  projects Project[]
+  members     OrganizationMember[]
+  projects    Project[]
+  invitations Invitation[]
+}
+
+// An email invite to join an organization. No User row is created until the
+// invitee signs up and accepts. Status is derived: accepted / revoked /
+// expired / pending. At most one pending invite per (organization, email),
+// enforced in the service (Prisma can't express a partial unique index).
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  // Stored trimmed and lowercased by the application.
+  email          String           @db.VarChar(320)
+  // ADMIN or MEMBER only: ownership is granted by an OWNER changing a role.
+  role           OrganizationRole
+  // SHA-256 of the emailed token; the raw token is never stored.
+  tokenHash      String           @unique @db.Char(64)
+  invitedById    String?          @db.Uuid
+  expiresAt      DateTime         @db.Timestamptz(3)
+  acceptedAt     DateTime?        @db.Timestamptz(3)
+  acceptedById   String?          @db.Uuid
+  revokedAt      DateTime?        @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedBy   User?        @relation("InvitationAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, email])
 }
 
 model OrganizationMember {
