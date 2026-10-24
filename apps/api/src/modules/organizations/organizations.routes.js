@@ -2,6 +2,7 @@ import { createOrganizationSchema, updateOrganizationSchema } from "@pinforth/sh
 import { Router } from "express";
 import { getAuth, requireAuth } from "../../middleware/require-auth.js";
 import { getMembership, requireOrgRole } from "../../middleware/require-org-role.js";
+import projectRoutes from "../projects/projects.routes.js";
 import {
   createOrganization,
   getOrganization,
@@ -47,5 +48,8 @@ router.get("/:orgId/members", requireOrgRole(), async (req, res) => {
 
   res.status(200).json({ success: true, data: { members } });
 });
+
+// Membership is checked once here; the projects router checks roles per route.
+router.use("/:orgId/projects", requireOrgRole(), projectRoutes);
 
 export default router;

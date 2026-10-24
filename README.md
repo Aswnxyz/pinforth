@@ -83,10 +83,11 @@ pinforth/
 │       │   ├── lib/
 │       │   │   ├── errors.js  # AppError and HTTP error helpers
 │       │   │   └── prisma.js  # Prisma Client instance
-│       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole
+│       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole, requireProject
 │       │   ├── modules/
 │       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
-│       │   │   └── organizations/
+│       │   │   ├── organizations/
+│       │   │   └── projects/  # Projects and environments
 │       │   └── scripts/
 │       │       └── check-db.js
 │       ├── test/              # Test database setup and DB tests
@@ -326,6 +327,37 @@ Base path: `/api/v1/organizations`. Every route requires authentication.
 - **Member without the required role:** `403 FORBIDDEN`.
 - Membership is checked on every request, so removing a member takes effect immediately.
 
+### Projects and Environments API
+
+Base path: `/api/v1/organizations/:orgId/projects`. Every route requires authentication and organization membership.
+
+| Endpoint | Role | Returns |
+|---|---|---|
+| `POST /` | `OWNER`, `ADMIN` | `{ project: ProjectSummary }` (201). Body: `{ name, description? }` |
+| `GET /` | member | `{ projects: ProjectSummary[] }`, newest first |
+| `GET /:projectSlug` | member | `{ project: ProjectDetail }`: the summary plus `environments`, oldest first |
+| `PATCH /:projectSlug` | `OWNER`, `ADMIN` | `{ project: ProjectSummary }`. Body: `{ name?, description? }` |
+| `POST /:projectSlug/environments` | `OWNER`, `ADMIN` | `{ environment: Environment }` (201). Body: `{ name, url }` |
+| `PATCH /:projectSlug/environments/:environmentId` | `OWNER`, `ADMIN` | `{ environment: Environment }`. Body: `{ name?, url? }` |
+
+- **Response shapes:**
+  - `ProjectSummary`: `id`, `name`, `slug`, `description`, `createdAt`, `updatedAt`.
+  - `Environment`: `id`, `name`, `slug`, `url`, `createdAt`, `updatedAt`.
+- **Validation:**
+  - Project names: 2–180 characters. Descriptions: up to 2,000.
+  - Environment names: 2–100 characters.
+  - URLs: `http`/`https` only, up to 2,048 characters, with no username or password. `localhost` and LAN addresses are allowed.
+  - An update must include at least one field. Omitted fields are unchanged, and `description: null` (or a blank description) clears it.
+- **Slugs:**
+  - Generated from the name and never changed. A slug sent in a request body is ignored.
+  - Unique per organization (projects) or per project (environments). A taken slug gets a short suffix, e.g. `acme-website-3f9a2c`.
+  - `new`, `settings` and `environments` are never used as project slugs.
+- **Environment names** are unique per project, ignoring case. A clash returns `409 ENVIRONMENT_NAME_TAKEN`.
+- **Access:**
+  - Not an organization member: `404`.
+  - A `MEMBER` trying to write: `403`.
+  - A project slug or environment ID from another organization or project: `404 Project not found` / `404 Environment not found`.
+
 When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
 
 Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
@@ -356,6 +388,7 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Password reset by email, with Mailpit for local email.
 - Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
 - Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
+- Projects and website environments: create, list, view, update, with generated slugs and per-organization isolation.
 
 **Upcoming**
 - Organization invitations and member role management.
