@@ -7,13 +7,14 @@ export type TextFieldProps = {
   name: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "email" | "password";
+  type?: "text" | "email" | "password" | "url";
   hint?: string;
   error?: string;
   autoComplete?: string;
   placeholder?: string;
   disabled?: boolean;
   required?: boolean;
+  maxLength?: number;
   /** Rendered inside the field, on the trailing edge. */
   trailing?: ReactNode;
 };
@@ -30,6 +31,7 @@ export function TextField({
   placeholder,
   disabled,
   required,
+  maxLength,
   trailing,
 }: TextFieldProps) {
   const id = useId();
@@ -62,6 +64,7 @@ export function TextField({
           placeholder={placeholder}
           disabled={disabled}
           required={required}
+          maxLength={maxLength}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={[
