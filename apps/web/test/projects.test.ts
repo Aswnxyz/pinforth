@@ -74,13 +74,15 @@ describe("projectSlugPreview", () => {
     expect(projectSlugPreview("   ")).toEqual({ kind: "none" });
   });
 
-  it("returns none when the name is too short to form a usable slug", () => {
-    // Regression: a name of valid length can still produce no usable URL.
-    expect(projectSlugPreview("AB")).toEqual({ kind: "none" });
+  it("previews the URL for a valid two-character name", () => {
+    // Backend contract: names of 2+ characters are accepted and short slugs
+    // are valid, so "AB" previews /ab instead of blocking submission.
+    expect(projectSlugPreview("AB")).toEqual({ kind: "slug", slug: "ab" });
   });
 
   it("returns none when the name has no letters or numbers", () => {
-    // Regression: three characters, but nothing to build a slug from.
+    // Three characters, but nothing to build a slug from — the backend
+    // generates one on creation, so nothing may be previewed here.
     expect(projectSlugPreview("!!!")).toEqual({ kind: "none" });
   });
 
@@ -88,6 +90,13 @@ describe("projectSlugPreview", () => {
     // Regression: "New" is a fine project name; the backend generates a
     // suffixed slug, so the preview must not reject it nor invent a suffix.
     expect(projectSlugPreview("New")).toEqual({ kind: "reserved" });
+  });
+
+  it("recognizes every backend-reserved project slug", () => {
+    // The backend reserves new, settings and environments; a previewed URL
+    // for any of them would be a dead route segment.
+    expect(projectSlugPreview("Settings")).toEqual({ kind: "reserved" });
+    expect(projectSlugPreview("Environments")).toEqual({ kind: "reserved" });
   });
 
   it("returns a slug for a name that mixes words and numbers", () => {

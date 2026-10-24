@@ -1,8 +1,9 @@
 /**
- * The workflow a review follows in Pinforth.
+ * Introduces project management and the workflow a review follows.
  *
- * It is shown as information only: there is nothing to click, because the
- * modules behind these steps are not part of Pinforth yet.
+ * Informational only: the entry links live in the workspace page's project
+ * section, and this card never claims how many projects the workspace has —
+ * that count is only known to the Projects route, which fetches it.
  */
 const WORKFLOW_STEPS = [
   "Feedback",
@@ -15,10 +16,13 @@ const WORKFLOW_STEPS = [
 export function WorkspaceEmptyState() {
   return (
     <section className="rounded-xl border border-border bg-surface-raised p-6 shadow-xs sm:p-8">
-      <h2 className="text-base font-semibold text-foreground">No projects yet</h2>
+      <h2 className="text-base font-semibold text-foreground">
+        Project management
+      </h2>
       <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-        This workspace is ready. The client websites you look after, and the
-        feedback, issues and releases that belong to them, will appear here.
+        Every client website this workspace reviews is tracked as a project.
+        Create projects from the Projects page and follow each one from feedback
+        to sign-off.
       </p>
 
       <div className="mt-6 rounded-lg border border-border bg-surface-muted px-4 py-4">
@@ -42,10 +46,6 @@ export function WorkspaceEmptyState() {
           ))}
         </ol>
       </div>
-
-      <p className="mt-4 text-sm leading-6 text-muted-foreground">
-        Projects are not available in Pinforth yet.
-      </p>
     </section>
   );
 }

@@ -93,16 +93,10 @@ export function CreateProjectForm({
       errors.description = `Description must be at most ${DESCRIPTION_MAX.toLocaleString()} characters.`;
     }
 
-    // A name of the right length can still produce no usable URL (e.g. "AB"
-    // or "!!!"). Reserved names are fine — the backend generates a slug.
-    if (trimmedName.length >= NAME_MIN && trimmedName.length <= NAME_MAX) {
-      if (projectSlugPreview(trimmedName).kind === "none") {
-        errors.name =
-          "This name can’t become a project URL. Use at least 3 letters or " +
-          "numbers, for example “Coffee Shop Website”.";
-      }
-    }
-
+    // Slug viability is deliberately not checked here: short ("AB"),
+    // punctuation-only ("!!!") and reserved ("New") names are all valid to
+    // the backend, which derives the authoritative slug itself. The preview
+    // below is informational only.
     if (Object.keys(errors).length > 0) {
       setLocalErrors(errors);
       focusFirstInvalid(event.currentTarget, Object.keys(errors));

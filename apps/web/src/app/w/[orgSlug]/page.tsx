@@ -9,7 +9,10 @@ import { WorkspaceGate } from "@/components/workspace/workspace-gate";
 import { WorkspaceLoading } from "@/components/workspace/workspace-states";
 import { ORGANIZATION_ROLE_LABELS } from "@/lib/organizations/api";
 import { useWorkspaces } from "@/lib/organizations/context";
-import { resolveOrganizationAccess } from "@/lib/organizations/organization-access";
+import {
+  canManageProjects,
+  resolveOrganizationAccess,
+} from "@/lib/organizations/organization-access";
 
 export default function WorkspacePage() {
   return (
@@ -92,6 +95,45 @@ function WorkspaceView() {
               </dd>
             </div>
           </dl>
+
+          {/* Project management entry: links only. The Projects route owns
+              fetching, so the workspace homepage never duplicates its
+              requests just to display a count. */}
+          <section
+            aria-labelledby="project-management-heading"
+            className="rounded-xl border border-border bg-surface-raised p-6 shadow-xs sm:p-8"
+          >
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Projects
+            </p>
+            <h2
+              id="project-management-heading"
+              className="mt-1 text-base font-semibold text-foreground"
+            >
+              Manage this workspace&apos;s projects
+            </h2>
+            <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              The client websites this workspace reviews — with their
+              environments, feedback, issues and releases — are all in Projects.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                href={`/w/${organization.slug}/projects`}
+                className="inline-flex h-11 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                View projects
+              </Link>
+              {canManageProjects(organization.role) ? (
+                <Link
+                  href={`/w/${organization.slug}/projects/new`}
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-4 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  Create project
+                </Link>
+              ) : null}
+            </div>
+          </section>
 
           <WorkspaceEmptyState />
         </div>
