@@ -17,6 +17,16 @@ export function canManageProjects(role: OrganizationRole): boolean {
 }
 
 /**
+ * Whether the signed-in member may change organization members' roles.
+ *
+ * UX gating only, mirroring `canManageProjects`: the API is still the
+ * authorization authority and answers `forbidden` on its own.
+ */
+export function canManageMembers(role: OrganizationRole): boolean {
+  return role === "OWNER";
+}
+
+/**
  * Resolves a workspace slug against the organizations the signed-in user can
  * actually reach.
  *
