@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/app/app-header";
+import { MembersEntry } from "@/components/workspace/members-entry";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
 import { WorkspaceLoading } from "@/components/workspace/workspace-states";
@@ -134,6 +135,10 @@ function WorkspaceView() {
               ) : null}
             </div>
           </section>
+
+          {/* Members entry, right below Projects: every role can look at who
+              has access; the route itself gates what each person may change. */}
+          <MembersEntry slug={organization.slug} />
 
           <WorkspaceEmptyState />
         </div>
