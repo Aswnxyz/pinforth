@@ -16,7 +16,7 @@ import {
   resolveWorkspaceDestination,
   resolveWorkspaceRouteState,
 } from "@/lib/organizations/workspace-destination";
-import { resolveOrganizationAccess } from "@/lib/organizations/organization-access";
+import { canManageProjects, resolveOrganizationAccess } from "@/lib/organizations/organization-access";
 import { ORGANIZATION_ROLE_LABELS } from "@/lib/organizations/api";
 import {
   mapCurrentUserOutcome,
@@ -478,6 +478,17 @@ describe("resolveOrganizationAccess", () => {
     const access = resolveOrganizationAccess([], "acme-studio");
 
     expect(access).toEqual({ kind: "unavailable" });
+  });
+});
+
+describe("canManageProjects", () => {
+  it("lets owners and admins create and edit projects", () => {
+    expect(canManageProjects("OWNER")).toBe(true);
+    expect(canManageProjects("ADMIN")).toBe(true);
+  });
+
+  it("keeps members read-only", () => {
+    expect(canManageProjects("MEMBER")).toBe(false);
   });
 });
 
