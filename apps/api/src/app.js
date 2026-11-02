@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { requireTrustedOrigin } from "./middleware/trusted-origin.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import { invitationLinkRoutes, organizationInvitationRoutes } from "./modules/invitations/invitations.routes.js";
 import organizationRoutes from "./modules/organizations/organizations.routes.js";
 
 const app = express();
@@ -35,7 +36,10 @@ app.get("/api/v1/health", (_req, res) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
+// Before the organizations router, whose own requireAuth would otherwise run first.
+app.use("/api/v1/organizations/:orgId/invitations", organizationInvitationRoutes);
 app.use("/api/v1/organizations", organizationRoutes);
+app.use("/api/v1/invitations", invitationLinkRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
