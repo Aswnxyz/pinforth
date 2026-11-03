@@ -7,6 +7,7 @@ import { PasswordField } from "@/components/ui/password-field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { TextField } from "@/components/ui/text-field";
 import { POST_AUTH_REDIRECT, registerWithPassword } from "@/lib/auth/api";
+import { destinationAfterAuth } from "@/lib/organizations/invitation-session";
 import { useAuth } from "@/lib/auth/context";
 import {
   emailSchema,
@@ -29,7 +30,7 @@ export function RegisterForm() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push(POST_AUTH_REDIRECT);
+      router.push(destinationAfterAuth(POST_AUTH_REDIRECT));
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -80,7 +81,7 @@ export function RegisterForm() {
 
     if (outcome.status === "success") {
       await refreshUser();
-      router.push(POST_AUTH_REDIRECT);
+      router.push(destinationAfterAuth(POST_AUTH_REDIRECT));
       return;
     }
 

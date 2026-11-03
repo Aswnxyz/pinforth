@@ -11,6 +11,8 @@ import {
   LeaveOrganization,
   type LeavePhase,
 } from "@/components/members/leave-organization";
+import { InviteMemberForm } from "@/components/members/invite-member-form";
+import { PendingInvitations } from "@/components/members/pending-invitations";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
 import { WorkspaceLoading } from "@/components/workspace/workspace-states";
 import { FormAlert } from "@/components/ui/form-alert";
@@ -93,7 +95,11 @@ function MembersView() {
             href={`/w/${organization.slug}`}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4 fill-current">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              className="size-4 fill-current"
+            >
               <path d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L6.81 8l2.97 2.97a.75.75 0 0 1 0 1.06Z" />
             </svg>
             Back to {organization.name}
@@ -111,10 +117,23 @@ function MembersView() {
             </p>
           </div>
 
-          {/* Keyed by id so a different workspace always starts from a fresh
-              load — member data from one organization is never carried over
-              into another. */}
-          <MemberListSection key={organization.id} organization={organization} />
+          {(organization.role === "OWNER" || organization.role === "ADMIN") && (
+            <InviteMemberForm
+              key={`invite-${organization.id}`}
+              organizationId={organization.id}
+            />
+          )}
+          {(organization.role === "OWNER" || organization.role === "ADMIN") && (
+            <PendingInvitations
+              key={`pending-${organization.id}`}
+              organizationId={organization.id}
+            />
+          )}
+
+          <MemberListSection
+            key={`members-${organization.id}`}
+            organization={organization}
+          />
         </div>
       </main>
 
@@ -238,8 +257,7 @@ function MemberListSection({
     roleEdit && roleEdit.key === requestKey ? roleEdit : null;
   // The removal and leave flows are keyed the same way, so a workspace switch
   // or reload derives them as closed and frees their requests' effects.
-  const activeRemoval =
-    removal && removal.key === requestKey ? removal : null;
+  const activeRemoval = removal && removal.key === requestKey ? removal : null;
   const activeLeave = leave && leave.key === requestKey ? leave : null;
   const noticeMessage =
     notice && notice.key === requestKey ? notice.message : null;
@@ -273,8 +291,8 @@ function MemberListSection({
           Workspace not available
         </h2>
         <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-          This workspace is not available. The link may be out of date, or
-          you may not have access to it.
+          This workspace is not available. The link may be out of date, or you
+          may not have access to it.
         </p>
       </div>
     );
@@ -322,8 +340,9 @@ function MemberListSection({
   const editingMember =
     activeRoleEdit === null
       ? null
-      : state.members.find((member) => member.id === activeRoleEdit.memberId) ??
-        null;
+      : (state.members.find(
+          (member) => member.id === activeRoleEdit.memberId,
+        ) ?? null);
 
   /**
    * Saves one role change.
@@ -332,7 +351,10 @@ function MemberListSection({
    * change is reconciled from the returned member; an unconfirmed one is
    * never repeated — the list has to be read back first.
    */
-  async function handleSave(member: OrganizationMember, role: OrganizationRole) {
+  async function handleSave(
+    member: OrganizationMember,
+    role: OrganizationRole,
+  ) {
     const key = requestKey;
     const token = guard.current.start();
 
@@ -498,7 +520,8 @@ function MemberListSection({
   const removalTarget =
     activeRemoval === null
       ? null
-      : members.find((member) => member.id === activeRemoval.memberId) ?? null;
+      : (members.find((member) => member.id === activeRemoval.memberId) ??
+        null);
 
   // Only one role-editing, removal or leave interaction at a time. While one
   // is open the rows keep their read-only appearance.
@@ -1000,8 +1023,8 @@ function UnavailableWorkspace() {
             Workspace not available
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-            This workspace is not available. The link may be out of date, or
-            you may not have access to it.
+            This workspace is not available. The link may be out of date, or you
+            may not have access to it.
           </p>
 
           <Link
