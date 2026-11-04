@@ -1,99 +1,42 @@
-"use client";
+import { Instrument_Serif } from "next/font/google";
+import { FoliageCluster } from "@/components/landing/art/icons";
+import { HeroStage } from "@/components/landing/hero-stage";
+import { LandingHero } from "@/components/landing/landing-hero";
+import { LandingNav } from "@/components/landing/landing-nav";
 
-import Link from "next/link";
-import { PinforthLogo } from "@/components/brand/pinforth-logo";
-import { SignOutButton, SignOutError } from "@/components/auth/sign-out-button";
-import { useAuth } from "@/lib/auth/context";
+const display = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
 
+/**
+ * The marketing homepage (Landing Page V2).
+ *
+ * A server component: only the auth-aware islands (nav, hero copy) are
+ * client components. The `.landing` wrapper scopes the dark theme — the
+ * light app screens outside this subtree are unaffected.
+ */
 export default function HomePage() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-
   return (
-    <div className="flex min-h-dvh flex-col bg-surface text-foreground">
-      <header>
-        <div className="flex items-center justify-between px-5 py-5 sm:px-8 sm:py-6">
-          <Link
-            href="/"
-            className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
-          >
-            <PinforthLogo variant="full" size="md" />
-          </Link>
+    <div
+      className={`landing ${display.variable} min-h-dvh overflow-x-clip bg-surface text-foreground`}
+    >
+      <div className="lp-top-glow" aria-hidden="true" />
+      <FoliageCluster className="pointer-events-none absolute -left-5 -top-4 z-20 w-32 sm:w-44 lg:w-56" />
 
-          <div className="flex items-center gap-3">
-            {isLoading ? (
-              <div className="h-8 w-20 animate-pulse rounded-md bg-surface-muted" />
-            ) : isAuthenticated && user ? (
-              <>
-                <Link
-                  href="/w"
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                >
-                  {user.name ? `Hi, ${user.name}` : user.email}
-                </Link>
-                <SignOutButton className="px-3 py-1.5" />
-              </>
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                Sign in
-              </Link>
-            )}
+      <LandingNav />
+
+      <main>
+        <section className="mx-auto w-full max-w-[84rem] px-5 pt-6 sm:px-8 lg:pt-10">
+          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-10">
+            <LandingHero />
+            <HeroStage />
           </div>
-        </div>
-
-        <SignOutError />
-      </header>
-
-      <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
-        <div className="w-full max-w-2xl text-center">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted px-3.5 py-1 text-xs font-medium text-foreground">
-            From feedback to sign-off
-          </div>
-
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            Review, verify, and approve website releases with a record everyone
-            trusts.
-          </h1>
-
-          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-            Pinforth keeps client feedback, issue tracking, fix verification, and
-            release approval in one place — so you always know which deployment
-            was tested and which release was signed off.
-          </p>
-
-          <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-            {isAuthenticated ? (
-              <Link
-                href="/w"
-                className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-5 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-auto"
-              >
-                Go to your workspace
-              </Link>
-            ) : (
-              <>
-                <Link
-                  href="/register"
-                  className="inline-flex h-11 w-full items-center justify-center rounded-md bg-accent px-5 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-auto"
-                >
-                  Create an account
-                </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex h-11 w-full items-center justify-center rounded-md border border-border-strong bg-surface-raised px-5 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-auto"
-                >
-                  Sign in
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
+        </section>
       </main>
-
-      <footer className="px-5 py-6 text-center text-xs text-muted-foreground">
-        Pinforth — from feedback to sign-off.
-      </footer>
     </div>
   );
 }

@@ -118,3 +118,157 @@
 body {
   font-family: var(--font-geist-sans);
 }
+
+/* ==========================================================================
+ * Landing Page V2 — scoped to the marketing homepage only.
+ *
+ * Every override lives under `.landing`, the wrapper `app/page.tsx` renders,
+ * so the light Porcelain & Moss app screens are untouched. Status tokens are
+ * intentionally not overridden: the landing page shows no status pills.
+ * ========================================================================== */
+.landing {
+  color-scheme: dark;
+
+  --surface: #070b08;
+  --surface-raised: #0e140f;
+  --surface-muted: #131a14;
+  --surface-highlight: #17211a;
+  --foreground: #f1f4ec;
+  --muted-foreground: #b3c0b5;
+  --border: rgba(241, 244, 236, 0.12);
+  --border-strong: rgba(241, 244, 236, 0.28);
+  --accent: #b7e8a1;
+  --accent-hover: #c7efb2;
+  --accent-foreground: #0b1e12;
+
+  /* Landing-only extras (these do not exist app-wide). */
+  --lp-accent-ink: #b6e79e;
+  --lp-ink-dim: #9bada1;
+  --lp-glow: rgba(126, 214, 139, 0.22);
+
+  position: relative;
+}
+
+/* Film grain over the whole page; decorative and click-through. */
+.landing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* --- Typography ---------------------------------------------------------- */
+.landing .lp-serif {
+  font-family: var(
+    --font-display,
+    var(--font-instrument-serif, ui-serif, Georgia, "Times New Roman", serif)
+  );
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.landing .lp-serif-accent {
+  font-style: italic;
+  color: var(--lp-accent-ink);
+}
+
+.landing .lp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--lp-ink-dim);
+}
+
+.landing .lp-eyebrow::before {
+  content: "";
+  width: 1.75rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* The brand logo fills its pin with `var(--color-accent, #365B47)`; the
+   theme never emits `--color-accent`, so it always falls back to the
+   light-theme dark green — too dark on the landing background. Retarget it
+   to the landing accent here only; branding outside `.landing` is untouched.
+   Prefix match: the terracotta path uses `--color-accent-terracotta`. */
+.landing svg path[fill^="var(--color-accent,"] {
+  fill: var(--accent);
+}
+
+/* --- Rules and surfaces --------------------------------------------------- */
+.landing .lp-rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(241, 244, 236, 0.14) 12%,
+    rgba(241, 244, 236, 0.14) 88%,
+    transparent
+  );
+}
+
+/* --- Motion (CSS-first; reduced-motion gate below) ------------------------ */
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing .lp-enter {
+  animation: lp-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--lp-delay, 0ms);
+}
+
+/* Dashed marching outline on the hero's selected region. */
+@keyframes lp-dash {
+  to {
+    stroke-dashoffset: -72;
+  }
+}
+
+.landing .lp-dash {
+  animation: lp-dash 2.6s linear infinite;
+}
+
+/* Soft top-edge light over the hero. */
+.landing .lp-top-glow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 30rem;
+  pointer-events: none;
+  background: radial-gradient(
+    55% 100% at 42% 0%,
+    rgba(126, 214, 139, 0.09),
+    transparent 72%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  /* A zero-duration infinite loop would churn frame by frame — stop it. */
+  .landing .lp-dash {
+    animation: none !important;
+  }
+}
