@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.{ts,tsx}"],
     // Unit tests cover pure logic only, so no DOM is needed.
     environment: "node",
   },
