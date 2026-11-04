@@ -384,6 +384,60 @@ Base path: `/api/v1/organizations/:orgId/projects`. Every route requires authent
   - A `MEMBER` trying to write: `403`.
   - A project slug or environment ID from another organization or project: `404 Project not found` / `404 Environment not found`.
 
+### Issues API
+
+Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every route requires authentication and organization membership.
+
+| Endpoint | Role | Returns | Description |
+|---|---|---|---|
+| `POST /` | member (verified email) | `{ issue: IssueDetail }` (201) | Create issue. Body: `{ title, description?, type?, priority?, assigneeId?, environmentId? }` |
+| `GET /` | member | `{ issues: IssueSummary[], pagination, counts }` (200) | Paginated list, filtered search, and status counts |
+| `GET /:number` | member | `{ issue: IssueDetail }` (200) | Single issue detail by sequential number |
+| `PATCH /:number` | member | `{ issue: IssueDetail }` (200) | Update issue. Body: `{ title?, description?, type?, priority?, status?, assigneeId?, environmentId? }` |
+| `DELETE /:number` | `OWNER`, `ADMIN` | `{ deleted: true, number }` (200) | Delete issue. Numbers are never reused |
+
+- **Issue Types:** `BUG` (default), `DESIGN`, `CONTENT`, `SUGGESTION`.
+- **Issue Priorities:** `LOW`, `MEDIUM` (default), `HIGH`, `CRITICAL`.
+- **Issue Statuses:** `NEW` (default on create), `IN_PROGRESS`, `READY_FOR_VERIFICATION`, `CLOSED`.
+- **Issue Sources:** `DASHBOARD` (default on create), `WIDGET`.
+- **Sequential Issue Numbering:**
+  - Starts at 1 for each project and strictly increments atomically on creation.
+  - Safe against race conditions under concurrent creation.
+  - Issue numbers are permanent and **never reused after deletion**.
+- **Issue Creation:**
+  - Requires a verified email address (`requireVerifiedEmail`). Unverified users receive `403 EMAIL_NOT_VERIFIED`.
+  - Strictly validated: forged fields (`status`, `source`, `number`, `reporterId`) and unsupported properties are rejected with `400 VALIDATION_ERROR`.
+- **Assignee Reference:**
+  - `assigneeId` references an `OrganizationMember` in the current organization (retrieved from the Members API).
+  - Assignees from other organizations are rejected with `400 BAD_REQUEST`.
+  - When an organization member is removed, their issue assignments are automatically cleared to `null` (`onDelete: SetNull`).
+  - Response objects populate `assignee` with `{ id, name, email }` through the related user.
+- **Environment Reference:**
+  - `environmentId` references an `Environment` in the current project. Environments from other projects or organizations are rejected with `400 BAD_REQUEST`.
+- **Listing & Status Counts (`GET /`):**
+  - **Pagination:** stable number-descending (`number: "desc"`), parameterized with `page` (default 1) and `limit` (default 20, max 100).
+  - **Filters:**
+    - `status`: filter by status (`NEW`, `IN_PROGRESS`, `READY_FOR_VERIFICATION`, `CLOSED`).
+    - `type`: filter by type (`BUG`, `DESIGN`, `CONTENT`, `SUGGESTION`).
+    - `priority`: filter by priority (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+    - `assigneeId`:
+      - `me`: issues assigned to the authenticated caller's organization membership.
+      - `unassigned`: issues with no assignee.
+      - `<uuid>`: issues assigned to a specific organization member ID.
+    - `environmentId`: filter by environment UUID.
+    - `search`: case-insensitive keyword substring search on `title`.
+  - **Status Counts:**
+    - The `counts` response object provides `{ all, NEW, IN_PROGRESS, READY_FOR_VERIFICATION, CLOSED }`.
+    - Computes counts respecting all active filters (`assigneeId`, `type`, `priority`, `environmentId`, `search`) **except `status`**, keeping status tab badges consistent when selecting a tab.
+- **Updates (`PATCH /:number`):**
+  - All organization members (`OWNER`, `ADMIN`, `MEMBER`) can update issues.
+  - Requires at least one field. Unknown or forged fields are rejected with `400 VALIDATION_ERROR`.
+  - Setting `assigneeId: null` unassigns the issue.
+  - Setting `environmentId: null` unlinks the environment.
+  - Setting `description: null` or `""` clears the description.
+- **Deletions (`DELETE /:number`):**
+  - Restricted to `OWNER` and `ADMIN`. Regular `MEMBER` receives `403 FORBIDDEN`.
+
 ### Invitations API
 
 **Organization side:** `/api/v1/organizations/:orgId/invitations`, for OWNER and ADMIN only.
@@ -457,9 +511,9 @@ Passwords are hashed with argon2id. Login and signup are rate-limited per IP, an
 - Projects and website environments: create, list, view, update, with generated slugs and per-organization isolation.
 - Member management: change roles, remove members, leave, with last-owner protection.
 - Organization invitations by email: invite, resend, revoke, preview and accept.
+- Basic Issues API: sequential concurrency-safe numbering, role-based access, strict tenant isolation, filtering, assigned-to-me support, and status tab counts.
 
 **Upcoming**
-- Organization invitations and member role management.
 - Guest reviewer access for review rounds.
 - Project management APIs.
 - Deployment version tracking.
