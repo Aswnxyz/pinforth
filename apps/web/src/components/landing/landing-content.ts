@@ -16,9 +16,9 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: readonly NavSection[] = [
-  { id: "product", label: "Product" },
-  { id: "workflow", label: "Workflow" },
   { id: "why-pinforth", label: "Why Pinforth" },
+  { id: "workflow", label: "Workflow" },
+  { id: "product", label: "Product" },
 ];
 
 /** Section ids in nav order; nav hrefs are derived as `#${id}`. */
@@ -99,17 +99,88 @@ export const PROBLEM_CHIPS: readonly string[] = [
   "And still, unclear approvals.",
 ];
 
+/**
+ * Honest availability line shown in the hero: only capabilities marked
+ * `live` in CAPABILITIES may be named here (guarded by claim tests).
+ */
+export const LIVE_LINE =
+  "Live today — workspaces · projects · environments · team";
+
+export const PROBLEM = {
+  id: "why-pinforth",
+  eyebrow: "The problem",
+  headline: "Website review is scattered everywhere but here.",
+  body: "Feedback arrives in chat threads, email, screenshots, and spreadsheets. Fixes get claimed, not retested. And when it is time to sign off, nobody can say which version was approved.",
+  /** Fragment chips: the scattered places feedback ends up today. */
+  fragments: PROBLEM_CHIPS,
+} as const;
+
+export const WORKFLOW = {
+  id: "workflow",
+  eyebrow: "How Pinforth works",
+  headline: "One thread, from first report to final sign-off.",
+  body: "Every issue keeps its original context, its fixes, and its retest results — attached to the exact deployment they belong to.",
+  visionLabel: "Product vision preview",
+} as const;
+
+export const PRODUCT = {
+  id: "product",
+  eyebrow: "The workspace",
+  headline: "Your whole delivery pipeline, on one table.",
+  body: "Projects, environments, and team access are live today. The review workspace they'll live in is being built on top of them.",
+  /** Marker on the workspace mock: it shows shipped functionality. */
+  liveLabel: "Live today",
+  /**
+   * The showcase's static representation of the shipped workspace —
+   * organization, projects, environments and members, as the app renders
+   * them today. Claim tests treat this as marketing copy.
+   */
+  mock: {
+    workspace: "Acme Studio",
+    action: "New project",
+    projects: [
+      {
+        name: "Qzen — Marketing Website",
+        meta: "Brand refresh · Created Nov 2, 2026",
+      },
+      {
+        name: "Aurel — Product Launch",
+        meta: "Launch site · Created Oct 18, 2026",
+      },
+    ],
+    environments: [
+      { name: "Staging", url: "staging.acme.studio" },
+      { name: "Production", url: "acme.studio" },
+    ],
+    team: [
+      { name: "Ada Lovelace", role: "Owner" },
+      { name: "Maya Chen", role: "Member" },
+    ],
+  },
+} as const;
+
+export const CLOSING = {
+  eyebrow: "Start today",
+  headline: "Set up the workspace. The review flow comes to it.",
+  body: "Create your workspace, add your first project, and set up its environments — the foundation the rest of Pinforth is being built on.",
+  secondaryCta: { label: "See how it works", href: "#workflow" },
+} as const;
+
 export const HERO = {
   eyebrow: "Website delivery, simplified",
-  headline: "From client feedback to final approval.",
+  /**
+   * Staircase headline: three lines, each indented one step further, the
+   * last one carrying the coral highlighter accent.
+   */
+  headlineLines: ["From client feedback", "to final approval,", "In one place."],
   headlineAccent: "In one place.",
+  scrollHint: "See how it works",
   /**
    * Vision-scoped: "is bringing" keeps the copy honest about capabilities
    * that are still planned (see CAPABILITIES) rather than claiming the full
    * feedback-to-approval flow ships today.
    */
   sub: "Pinforth is bringing visual feedback, issue tracking, fix verification, and release approvals into one clear, collaborative workflow for agencies and dev teams.",
-  secondaryCta: { label: "See how it works", href: "#workflow" },
   /** Visible mark on the hero demo: it illustrates the flow, it is not shipped UI. */
   visionLabel: "Product vision preview",
   /** Client comment pinned on the selection inside the hero browser mock. */
@@ -179,5 +250,10 @@ export const ALL_COPY: string = JSON.stringify({
   WORKFLOW_STEPS,
   CAPABILITIES,
   PROBLEM_CHIPS,
+  PROBLEM,
+  WORKFLOW,
+  PRODUCT,
+  CLOSING,
+  LIVE_LINE,
   HERO,
 });

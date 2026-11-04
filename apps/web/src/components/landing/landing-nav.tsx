@@ -11,7 +11,6 @@ const FOCUS =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 const GHOST_LINK = `rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground ${FOCUS}`;
-
 /**
  * The landing page header.
  *
@@ -42,8 +41,8 @@ export function LandingNav() {
   }, [open]);
 
   return (
-    <header className="relative z-40">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8 sm:py-6">
+    <header className="lp-nav relative z-40">
+      <div className="mx-auto flex w-full max-w-[84rem] items-center justify-between gap-4 px-5 py-4 sm:px-8 sm:py-5">
         <Link
           href="/"
           aria-label="Pinforth home"
@@ -131,7 +130,9 @@ function AuthControls({
 }) {
   const layout =
     variant === "header"
-      ? "flex items-center gap-2 sm:gap-3"
+      ? // Below `lg` the menu owns every action, so the header stays logo +
+        // menu button and no control is rendered twice.
+        "hidden items-center gap-2 sm:gap-3 lg:flex"
       : "flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3";
 
   if (action.kind === "loading") {

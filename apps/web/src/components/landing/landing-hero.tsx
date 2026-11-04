@@ -13,45 +13,46 @@ const stagger = (ms: number) => ({ "--lp-delay": `${ms}ms` } as CSSProperties);
  *
  * The CTA resolves through `primaryCtaAction`, so the loading state renders
  * a same-geometry skeleton instead of an anonymous button that swaps text
- * once the session resolves.
+ * once the session resolves. The headline is a staircase: each line steps
+ * further in, and the last one carries the coral highlighter swipe.
  */
 export function LandingHero() {
   const { isAuthenticated, isLoading } = useAuth();
   const action = primaryCtaAction(isAuthenticated, isLoading);
 
   return (
-    <div className="relative z-10">
+    <div className="lp-hero-copy">
       <p className="lp-eyebrow lp-enter" style={stagger(0)}>
         {HERO.eyebrow}
       </p>
 
       <h1
-        className="lp-serif lp-enter mt-5 max-w-[34rem] text-[2.5rem] leading-[1.04] tracking-[-0.015em] sm:text-6xl xl:text-[4rem]"
-        style={stagger(90)}
+        id="hero-heading"
+        className="lp-stair lp-enter mt-6 text-[clamp(2.05rem,4.2vw,3.75rem)]"
+        style={stagger(80)}
       >
-        <span className="block">{HERO.headline}</span>
-        <span className="lp-serif-accent block whitespace-nowrap">
-          {HERO.headlineAccent}
-        </span>
+        {HERO.headlineLines.map((line) => (
+          <span key={line} className="lp-stair-line">
+            {line === HERO.headlineAccent ? (
+              <span className="lp-mark">{line}</span>
+            ) : (
+              line
+            )}
+          </span>
+        ))}
       </h1>
 
-      <p
-        className="lp-enter mt-6 max-w-xl text-base leading-7 text-muted-foreground"
-        style={stagger(180)}
-      >
+      <p className="lp-hero-sub lp-enter" style={stagger(180)}>
         {HERO.sub}
       </p>
 
-      <div
-        className="lp-enter mt-8 flex flex-wrap items-center gap-x-7 gap-y-4"
-        style={stagger(260)}
-      >
+      <div className="lp-hero-actions lp-enter" style={stagger(260)}>
         <PrimaryCta action={action} />
         <a
-          href={HERO.secondaryCta.href}
+          href="#workflow"
           className="group inline-flex items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          {HERO.secondaryCta.label}
+          {HERO.scrollHint}
           <ArrowDown className="size-4 transition-transform group-hover:translate-y-0.5" />
         </a>
       </div>

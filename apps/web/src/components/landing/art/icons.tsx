@@ -96,45 +96,23 @@ export function StatusPending(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/**
- * Dark leafy silhouette for the hero's top-left corner — original SVG
- * standing in for the plan's optional raster foliage asset.
- */
-export function FoliageCluster(props: SVGProps<SVGSVGElement>) {
-  const leaves = [
-    [30, 16, -35], [62, 26, -18], [95, 42, 8], [126, 64, 26],
-    [150, 90, 42], [72, 8, -62], [104, 18, -48], [136, 34, -32],
-    [88, 58, 72], [118, 84, 88], [46, 44, 55],
-  ] as const;
+/** Decorative paper plane with a dashed flight path, used by the hero collage. */
+export function PaperPlane(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg
-      viewBox="0 0 200 160"
-      aria-hidden="true"
-      fill="none"
-      {...props}
-    >
+    <svg viewBox="0 0 120 80" aria-hidden="true" fill="none" {...props}>
       <path
-        d="M4 6C50 18 104 44 152 96"
-        stroke="#16241a"
-        strokeWidth={3}
-        strokeLinecap="round"
+        d="M4 62C22 58 34 46 52 30"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeDasharray="4 6"
       />
       <path
-        d="M60 4C94 6 128 16 164 34"
-        stroke="#16241a"
-        strokeWidth={2.5}
-        strokeLinecap="round"
+        d="M58 12l44 12-36 20 2-14-10-18z"
+        fill="var(--lp-coral-soft)"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinejoin="round"
       />
-      {leaves.map(([x, y, r]) => (
-        <path
-          key={`${x}-${y}`}
-          d="M0 0C9 -7 22 -7 30 0C22 7 9 7 0 0Z"
-          fill="#0a140d"
-          stroke="rgba(183,232,161,0.12)"
-          strokeWidth={0.75}
-          transform={`translate(${x} ${y}) rotate(${r})`}
-        />
-      ))}
     </svg>
   );
 }
