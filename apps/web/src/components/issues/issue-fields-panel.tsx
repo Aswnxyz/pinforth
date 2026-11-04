@@ -15,6 +15,7 @@ import {
   ISSUE_PRIORITY_LABELS,
   ISSUE_STATUS_LABELS,
   ISSUE_TYPE_LABELS,
+  personName,
 } from "@/lib/issues/labels";
 
 const NONE = "";
@@ -26,10 +27,10 @@ const NONE = "";
  */
 function withCurrent(
   options: SelectOption[],
-  current: { id: string; name: string } | null,
+  current: { id: string; label: string } | null,
 ): SelectOption[] {
   if (!current || options.some((option) => option.value === current.id)) return options;
-  return [...options, { value: current.id, label: current.name }];
+  return [...options, { value: current.id, label: current.label }];
 }
 
 /**
@@ -101,11 +102,14 @@ export function IssueFieldsPanel({
               { value: NONE, label: "Unassigned" },
               ...assignees.map((option) => ({ value: option.id, label: option.label })),
             ],
-            issue.assignee,
+            issue.assignee && { id: issue.assignee.id, label: personName(issue.assignee) },
           )}
         />
       ) : (
-        <ReadOnlyField label="Assignee" value={issue.assignee?.name ?? "Unassigned"} />
+        <ReadOnlyField
+          label="Assignee"
+          value={issue.assignee ? personName(issue.assignee) : "Unassigned"}
+        />
       )}
 
       <SelectField
@@ -123,14 +127,14 @@ export function IssueFieldsPanel({
               label: environment.name,
             })),
           ],
-          issue.environment,
+          issue.environment && { id: issue.environment.id, label: issue.environment.name },
         )}
       />
 
       <dl className="space-y-3 border-t border-border pt-4">
         <ReadOnlyField
           label="Reported by"
-          value={issue.reporter ? issue.reporter.name : "Guest reviewer"}
+          value={issue.reporter ? personName(issue.reporter) : "Guest reviewer"}
         />
         <ReadOnlyField label="Opened" value={formatIssueDate(issue.createdAt)} />
         <ReadOnlyField label="Last updated" value={formatIssueDate(issue.updatedAt)} />

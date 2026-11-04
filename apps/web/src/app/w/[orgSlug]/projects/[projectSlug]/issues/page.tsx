@@ -14,6 +14,7 @@ import {
 import { FormAlert } from "@/components/ui/form-alert";
 import type { OrganizationSummary } from "@/lib/organizations/api";
 import {
+  hasNextPage,
   issueListQuery,
   listIssues,
   type IssueFilters as Filters,
@@ -96,13 +97,18 @@ function IssuesSection({
   const page = issues.state.kind === "ready" ? issues.state.data : null;
 
   async function handleLoadMore(current: IssuePage) {
-    if (!current.nextCursor || activeMore?.pending) return;
+    if (!hasNextPage(current) || activeMore?.pending) return;
 
     const key = issues.key;
     const token = issues.guard.start();
     setMore({ key, pending: true, message: null });
 
-    const outcome = await listIssues(organization.id, projectSlug, filters, current.nextCursor);
+    const outcome = await listIssues(
+      organization.id,
+      projectSlug,
+      filters,
+      current.pagination.page + 1,
+    );
     if (!issues.guard.accept(token)) return;
 
     if (outcome.status === "success") {
@@ -201,7 +207,7 @@ function IssuesSection({
 
           {activeMore?.message ? <FormAlert>{activeMore.message}</FormAlert> : null}
 
-          {issues.state.data.nextCursor ? (
+          {hasNextPage(issues.state.data) ? (
             <button
               type="button"
               disabled={activeMore?.pending}

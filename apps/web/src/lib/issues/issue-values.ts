@@ -8,8 +8,8 @@ import type {
   UpdateIssueInput,
 } from "./api";
 
-export const TITLE_MIN = 3;
-export const TITLE_MAX = 200;
+// Match createIssueSchema in @pinforth/shared.
+export const TITLE_MAX = 255;
 export const DESCRIPTION_MAX = 10000;
 
 /** What the create form holds. Empty strings mean "not chosen". */
@@ -34,8 +34,8 @@ export const EMPTY_ISSUE_VALUES: IssueFormValues = {
 export function validateTitle(title: string): string | null {
   const trimmed = title.trim();
 
-  if (trimmed.length < TITLE_MIN) {
-    return `Title must be at least ${TITLE_MIN} characters.`;
+  if (trimmed.length === 0) {
+    return "Title is required.";
   }
   if (trimmed.length > TITLE_MAX) {
     return `Title must be at most ${TITLE_MAX} characters.`;

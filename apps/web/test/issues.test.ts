@@ -3,12 +3,15 @@ import {
   createIssue,
   deleteIssue,
   getIssue,
+  hasNextPage,
   issueListQuery,
   listIssues,
   updateIssue,
   type Issue,
   type IssuePage,
+  type IssueSummary,
 } from "@/lib/issues/api";
+import { personName } from "@/lib/issues/labels";
 import {
   assigneeOptions,
   loadIssueWorkspace,
@@ -28,9 +31,9 @@ import {
 import { readIssueContext } from "@/components/issues/issue-context";
 
 /**
- * The issue screens are built against the agreed contract before the backend
- * exists, so these pin that contract: the URLs and bodies sent, the response
- * shapes accepted, and how every failure is mapped.
+ * These pin the contract with apps/api/src/modules/issues: the URLs, query
+ * keys and bodies sent, the response shapes accepted, and how every failure
+ * is mapped.
  */
 
 const jsonResponse = (body: unknown, status: number) =>
@@ -45,25 +48,36 @@ const BASE = `/api/v1/organizations/${ORG_ID}/projects/${PROJECT}/issues`;
 
 const person = { id: "u-1", name: "Rahul", email: "rahul@example.com" };
 
-const issue: Issue = {
+const summary: IssueSummary = {
   id: "5d2a9c1e-0b3f-4e6a-8c7d-1f2e3a4b5c6d",
   number: 12,
   title: "Contact button does nothing on mobile",
-  description: "Tapping it on iOS Safari does nothing.",
   type: "BUG",
   priority: "HIGH",
   status: "IN_PROGRESS",
   source: "DASHBOARD",
+  // The API also sends the environment's slug; extra keys are fine.
+  environment: { id: "env-1", name: "Staging" },
   reporter: person,
   assignee: null,
-  environment: { id: "env-1", name: "Staging" },
-  pageUrl: null,
-  context: null,
   createdAt: "2026-11-01T09:00:00.000Z",
   updatedAt: "2026-11-02T09:00:00.000Z",
 };
 
-const counts = { NEW: 2, IN_PROGRESS: 1, READY_FOR_VERIFICATION: 0, CLOSED: 4 };
+const issue: Issue = {
+  ...summary,
+  description: "Tapping it on iOS Safari does nothing.",
+  pageUrl: null,
+  context: null,
+};
+
+const counts = { all: 7, NEW: 2, IN_PROGRESS: 1, READY_FOR_VERIFICATION: 0, CLOSED: 4 };
+const pagination = (page: number, totalPages: number) => ({
+  page,
+  limit: 20,
+  total: totalPages * 20,
+  totalPages,
+});
 
 const NO_FILTERS = { status: null, priority: null, type: null, assignee: null };
 
@@ -88,8 +102,8 @@ describe("issue client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lists issues with a credentialed GET and returns the page", async () => {
-    const page = { issues: [issue], nextCursor: "c-2", counts };
+  it("lists issues with a credentialed GET and returns the page of summaries", async () => {
+    const page = { issues: [summary], pagination: pagination(1, 2), counts };
     const calls = stubFetch(() => jsonResponse({ success: true, data: page }, 200));
 
     const outcome = await listIssues(ORG_ID, PROJECT, NO_FILTERS);
@@ -101,35 +115,59 @@ describe("issue client", () => {
     expect(calls[0].init.credentials).toBe("include");
   });
 
-  it("sends only the filters that are set, plus the cursor", async () => {
+  it("sends only the filters that are set, under the API's query keys", async () => {
     const calls = stubFetch(() =>
-      jsonResponse({ success: true, data: { issues: [], nextCursor: null, counts } }, 200),
+      jsonResponse(
+        { success: true, data: { issues: [], pagination: pagination(2, 2), counts } },
+        200,
+      ),
     );
 
     await listIssues(
       ORG_ID,
       PROJECT,
-      { status: "NEW", priority: null, type: "BUG", assignee: "me" },
-      "c-2",
+      { status: "NEW", priority: null, type: "BUG", assignee: "unassigned" },
+      2,
     );
 
     const params = new URL(calls[0].url).searchParams;
     expect(Object.fromEntries(params)).toEqual({
       status: "NEW",
       type: "BUG",
-      assignee: "me",
-      cursor: "c-2",
+      assigneeId: "unassigned",
+      page: "2",
     });
   });
 
-  it("treats a list without counts as unavailable, never as empty", async () => {
+  it("treats a list without counts or pagination as unavailable, never as empty", async () => {
+    stubFetch(() => jsonResponse({ success: true, data: { issues: [], counts } }, 200));
+    expect((await listIssues(ORG_ID, PROJECT, NO_FILTERS)).status).toBe("unavailable");
+
     stubFetch(() =>
-      jsonResponse({ success: true, data: { issues: [], nextCursor: null } }, 200),
+      jsonResponse({ success: true, data: { issues: [], pagination: pagination(1, 1) } }, 200),
+    );
+    expect((await listIssues(ORG_ID, PROJECT, NO_FILTERS)).status).toBe("unavailable");
+  });
+
+  it("accepts a person without a name", async () => {
+    const unnamed = { ...issue, reporter: { ...person, name: null } };
+    stubFetch(() => jsonResponse({ success: true, data: { issue: unnamed } }, 200));
+
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("success");
+  });
+
+  it("accepts any JSON as the widget context", async () => {
+    stubFetch(() =>
+      jsonResponse({ success: true, data: { issue: { ...issue, context: ["x"] } } }, 200),
     );
 
-    const outcome = await listIssues(ORG_ID, PROJECT, NO_FILTERS);
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("success");
+  });
 
-    expect(outcome.status).toBe("unavailable");
+  it("needs the full issue from a single-issue read, not just a summary", async () => {
+    stubFetch(() => jsonResponse({ success: true, data: { issue: summary } }, 200));
+
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("unavailable");
   });
 
   it("rejects an issue with an unknown status", async () => {
@@ -170,13 +208,16 @@ describe("issue client", () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ assigneeId: null });
   });
 
-  it("deletes and expects the removed issue id back", async () => {
-    stubFetch(() => jsonResponse({ success: true, data: { issueId: issue.id } }, 200));
+  it("deletes and expects the removed issue number back", async () => {
+    const calls = stubFetch(() =>
+      jsonResponse({ success: true, data: { deleted: true, number: 12 } }, 200),
+    );
 
     expect(await deleteIssue(ORG_ID, PROJECT, 12)).toEqual({
       status: "success",
-      data: { issueId: issue.id },
+      data: { deleted: true, number: 12 },
     });
+    expect(calls[0].init.method).toBe("DELETE");
   });
 
   it("maps validation errors to their fields and drops unknown paths", async () => {
@@ -230,8 +271,14 @@ describe("issue client", () => {
 });
 
 describe("issueListQuery", () => {
-  it("is empty without filters", () => {
+  it("is empty without filters on the first page", () => {
     expect(issueListQuery(NO_FILTERS)).toBe("");
+    expect(issueListQuery(NO_FILTERS, 1)).toBe("");
+  });
+
+  it("knows when another page exists", () => {
+    expect(hasNextPage({ issues: [], pagination: pagination(1, 2), counts })).toBe(true);
+    expect(hasNextPage({ issues: [], pagination: pagination(2, 2), counts })).toBe(false);
   });
 
   it("changes with every filter, so each filter set loads separately", () => {
@@ -242,15 +289,17 @@ describe("issueListQuery", () => {
 });
 
 describe("issue form values", () => {
-  it("requires a title of at least 3 characters after trimming", () => {
-    expect(validateIssueValues({ ...EMPTY_ISSUE_VALUES, title: "  ab  " }).title).toBeDefined();
-    expect(validateIssueValues({ ...EMPTY_ISSUE_VALUES, title: "abc" })).toEqual({});
+  it("requires a non-blank title", () => {
+    expect(validateIssueValues({ ...EMPTY_ISSUE_VALUES, title: "   " }).title).toBeDefined();
+    expect(validateIssueValues({ ...EMPTY_ISSUE_VALUES, title: " a " })).toEqual({});
   });
 
-  it("limits title and description length", () => {
+  it("limits title and description length like the API", () => {
+    expect(validateIssueValues({ ...EMPTY_ISSUE_VALUES, title: "a".repeat(255) })).toEqual({});
+
     const errors = validateIssueValues({
       ...EMPTY_ISSUE_VALUES,
-      title: "a".repeat(201),
+      title: "a".repeat(256),
       description: "b".repeat(10001),
     });
 
@@ -270,10 +319,10 @@ describe("issue form values", () => {
       toCreateIssueInput({
         ...EMPTY_ISSUE_VALUES,
         title: "Broken",
-        assigneeId: "u-1",
+        assigneeId: "m-1",
         environmentId: "env-1",
       }),
-    ).toMatchObject({ assigneeId: "u-1", environmentId: "env-1" });
+    ).toMatchObject({ assigneeId: "m-1", environmentId: "env-1" });
   });
 
   it("sends only changed text, and an emptied description as null", () => {
@@ -295,7 +344,10 @@ describe("issueReflects", () => {
   it("compares plain fields and the nested assignee and environment", () => {
     expect(issueReflects(issue, { status: "IN_PROGRESS", environmentId: "env-1" })).toBe(true);
     expect(issueReflects(issue, { assigneeId: null })).toBe(true);
-    expect(issueReflects(issue, { assigneeId: "u-1" })).toBe(false);
+    expect(issueReflects(issue, { assigneeId: "m-1" })).toBe(false);
+    expect(
+      issueReflects({ ...issue, assignee: { ...person, id: "m-1" } }, { assigneeId: "m-1" }),
+    ).toBe(true);
     expect(issueReflects(issue, { status: "CLOSED" })).toBe(false);
   });
 });
@@ -339,18 +391,19 @@ describe("issue loading", () => {
   });
 
   it("appends a page without repeating an issue already shown", () => {
-    const first: IssuePage = { issues: [issue], nextCursor: "c-2", counts };
-    const other = { ...issue, id: "other", number: 11 };
+    const first: IssuePage = { issues: [summary], pagination: pagination(1, 2), counts };
+    const other = { ...summary, id: "other", number: 11 };
     const next: IssuePage = {
-      issues: [issue, other],
-      nextCursor: null,
+      issues: [summary, other],
+      pagination: pagination(2, 2),
       counts: { ...counts, NEW: 3 },
     };
 
     const merged = mergeIssuePages(first, next);
 
-    expect(merged.issues.map((item) => item.id)).toEqual([issue.id, "other"]);
-    expect(merged.nextCursor).toBeNull();
+    expect(merged.issues.map((item) => item.id)).toEqual([summary.id, "other"]);
+    expect(merged.pagination.page).toBe(2);
+    expect(hasNextPage(merged)).toBe(false);
     expect(merged.counts.NEW).toBe(3);
   });
 
@@ -368,16 +421,22 @@ describe("issue loading", () => {
     expect(parseIssueNumber(segment)).toBe(expected);
   });
 
-  it("offers assignees by user id, marking the caller", () => {
+  it("offers assignees by membership id, marking the caller", () => {
     expect(
       assigneeOptions([
         { id: "m-1", role: "OWNER", joinedAt: "", user: person, isYou: true },
         { id: "m-2", role: "MEMBER", joinedAt: "", user: { ...person, id: "u-2", name: "Anu" }, isYou: false },
       ]),
     ).toEqual([
-      { id: "u-1", label: "Rahul (you)" },
-      { id: "u-2", label: "Anu" },
+      { id: "m-1", label: "Rahul (you)" },
+      { id: "m-2", label: "Anu" },
     ]);
+  });
+
+  it("names a person by email when they have no name", () => {
+    expect(personName({ name: null, email: "a@example.com" })).toBe("a@example.com");
+    expect(personName({ name: "  ", email: "a@example.com" })).toBe("a@example.com");
+    expect(personName(person)).toBe("Rahul");
   });
 
   it("still loads the project when the members can't be read", async () => {
@@ -433,6 +492,8 @@ describe("readIssueContext", () => {
 
   it("ignores missing or malformed values", () => {
     expect(readIssueContext(null)).toEqual({ selector: null, viewport: null, browser: null });
+    expect(readIssueContext(["x"])).toEqual({ selector: null, viewport: null, browser: null });
+    expect(readIssueContext({ viewport: null })).toEqual({ selector: null, viewport: null, browser: null });
     expect(
       readIssueContext({ selector: 42, viewport: { width: "wide" }, browser: ["x"] }),
     ).toEqual({ selector: null, viewport: null, browser: null });

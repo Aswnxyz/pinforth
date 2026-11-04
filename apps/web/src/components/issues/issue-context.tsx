@@ -11,8 +11,11 @@ export function readIssueContext(context: Issue["context"]): {
   viewport: string | null;
   browser: string | null;
 } {
-  const value = context ?? {};
-  const viewport = value.viewport as { width?: unknown; height?: unknown } | undefined;
+  const value: Record<string, unknown> =
+    typeof context === "object" && context !== null && !Array.isArray(context)
+      ? (context as Record<string, unknown>)
+      : {};
+  const viewport = value.viewport as { width?: unknown; height?: unknown } | null | undefined;
 
   return {
     selector: typeof value.selector === "string" ? value.selector : null,

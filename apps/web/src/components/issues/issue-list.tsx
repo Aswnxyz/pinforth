@@ -1,6 +1,11 @@
 import Link from "next/link";
-import type { Issue } from "@/lib/issues/api";
-import { formatIssueDate, issueReference, ISSUE_TYPE_LABELS } from "@/lib/issues/labels";
+import type { IssueSummary } from "@/lib/issues/api";
+import {
+  formatIssueDate,
+  issueReference,
+  ISSUE_TYPE_LABELS,
+  personName,
+} from "@/lib/issues/labels";
 import { IssuePriorityBadge, IssueStatusBadge } from "./issue-badges";
 
 /**
@@ -13,7 +18,7 @@ export function IssueList({
   issues,
   issueHref,
 }: {
-  issues: readonly Issue[];
+  issues: readonly IssueSummary[];
   issueHref: (number: number) => string;
 }) {
   return (
@@ -35,7 +40,7 @@ export function IssueList({
               </p>
               <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
                 {ISSUE_TYPE_LABELS[issue.type]} · Opened {formatIssueDate(issue.createdAt)}
-                {issue.reporter ? ` by ${issue.reporter.name}` : ""}
+                {issue.reporter ? ` by ${personName(issue.reporter)}` : ""}
               </p>
             </div>
 
@@ -43,7 +48,7 @@ export function IssueList({
               <IssueStatusBadge status={issue.status} />
               <IssuePriorityBadge priority={issue.priority} />
               <span className="max-w-40 truncate text-xs text-muted-foreground">
-                {issue.assignee ? issue.assignee.name : "Unassigned"}
+                {issue.assignee ? personName(issue.assignee) : "Unassigned"}
               </span>
             </div>
           </Link>

@@ -33,16 +33,12 @@ export function IssueFilters({
 }: {
   filters: Filters;
   counts: IssueCounts | null;
-  /** Null when the members could not be read: only "me" and "none" remain. */
+  /** Null when the members could not be read: only "me" and "unassigned" remain. */
   assignees: readonly AssigneeOption[] | null;
   onChange: (filters: Filters) => void;
 }) {
-  const total = counts
-    ? ISSUE_STATUSES.reduce((sum, status) => sum + counts[status], 0)
-    : null;
-
   const tabs = [
-    { value: null, label: "All", count: total },
+    { value: null, label: "All", count: counts ? counts.all : null },
     ...ISSUE_STATUSES.map((status) => ({
       value: status,
       label: ISSUE_STATUS_LABELS[status],
@@ -120,7 +116,7 @@ export function IssueFilters({
           options={[
             { value: ANY, label: "Anyone" },
             { value: "me", label: "Assigned to me" },
-            { value: "none", label: "Unassigned" },
+            { value: "unassigned", label: "Unassigned" },
             ...(assignees ?? []).map((option) => ({
               value: option.id,
               label: option.label,

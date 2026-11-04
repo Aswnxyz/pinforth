@@ -11,8 +11,7 @@ import { apiFetch, type ApiResult } from "@/lib/auth/api";
  * its slug, exactly like the project client. Issues are addressed by their
  * per-project `number`, which is what the URL shows.
  *
- * shortcut: these types are the agreed issue contract, written before the
- * backend exists. The backend PR must return exactly these shapes.
+ * Mirrors `packages/shared/src/issues.ts` and `apps/api/src/modules/issues`.
  */
 
 export const ISSUE_STATUSES = [
@@ -30,19 +29,20 @@ export type IssueType = (typeof ISSUE_TYPES)[number];
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 export type IssueSource = (typeof ISSUE_SOURCES)[number];
 
-/** A user as an issue shows them. `id` is the user's account id. */
+/** A person as an issue shows them. `name` is optional on an account. */
 export interface IssuePerson {
+  /** The reporter's user id, but the assignee's **membership** id. */
   id: string;
-  name: string;
+  name: string | null;
   email: string;
 }
 
-export interface Issue {
+/** What a list row carries. */
+export interface IssueSummary {
   id: string;
   /** Per-project, never reused: `#12`. */
   number: number;
   title: string;
-  description: string | null;
   type: IssueType;
   priority: IssuePriority;
   status: IssueStatus;
@@ -51,27 +51,38 @@ export interface Issue {
   reporter: IssuePerson | null;
   assignee: IssuePerson | null;
   environment: { id: string; name: string } | null;
-  /** Filled by the feedback widget; null for dashboard issues. */
-  pageUrl: string | null;
-  /** Widget-captured page context (selector, viewport, browser). */
-  context: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type IssueCounts = Record<IssueStatus, number>;
+/** The full issue, as the single-issue endpoints return it. */
+export interface Issue extends IssueSummary {
+  description: string | null;
+  /** Filled by the feedback widget; null for dashboard issues. */
+  pageUrl: string | null;
+  /** Widget-captured page context (selector, viewport, browser); free-form JSON. */
+  context: unknown;
+}
+
+/** Per-status totals for the other active filters, plus `all`, for the tabs. */
+export type IssueCounts = Record<IssueStatus | "all", number>;
+
+export interface IssuePagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
 export interface IssuePage {
-  issues: Issue[];
-  /** Pass back as `cursor` for the next page; null on the last page. */
-  nextCursor: string | null;
-  /** Per-status totals for the other active filters, for the tabs. */
+  issues: IssueSummary[];
+  pagination: IssuePagination;
   counts: IssueCounts;
 }
 
 /**
- * List filters. `assignee` is a user id, `"me"` for the caller, or `"none"`
- * for unassigned issues.
+ * List filters. `assignee` is a membership id, `"me"` for the caller, or
+ * `"unassigned"`.
  */
 export interface IssueFilters {
   status: IssueStatus | null;
@@ -96,7 +107,7 @@ export interface CreateIssueInput {
   description?: string;
   type: IssueType;
   priority: IssuePriority;
-  /** The assignee's user id (not their membership id). */
+  /** The assignee's membership id (not their user id). */
   assigneeId?: string;
   environmentId?: string;
 }
@@ -113,7 +124,8 @@ export interface UpdateIssueInput {
 }
 
 export interface IssueRemoval {
-  issueId: string;
+  deleted: true;
+  number: number;
 }
 
 /**
@@ -166,19 +178,18 @@ function isPerson(value: unknown): value is IssuePerson {
   return (
     isRecord(value) &&
     isString(value.id) &&
-    isString(value.name) &&
+    (value.name === null || isString(value.name)) &&
     isString(value.email)
   );
 }
 
 /** A 200 with a missing or wrongly typed field is malformed, not a success. */
-export function isIssue(value: unknown): value is Issue {
+export function isIssueSummary(value: unknown): value is IssueSummary {
   return (
     isRecord(value) &&
     isString(value.id) &&
     Number.isInteger(value.number) &&
     isString(value.title) &&
-    (value.description === null || isString(value.description)) &&
     isType(value.type) &&
     isPriority(value.priority) &&
     isStatus(value.status) &&
@@ -189,17 +200,37 @@ export function isIssue(value: unknown): value is Issue {
       (isRecord(value.environment) &&
         isString(value.environment.id) &&
         isString(value.environment.name))) &&
-    (value.pageUrl === null || isString(value.pageUrl)) &&
-    (value.context === null || isRecord(value.context)) &&
     isString(value.createdAt) &&
     isString(value.updatedAt)
   );
 }
 
+export function isIssue(value: unknown): value is Issue {
+  return (
+    isIssueSummary(value) &&
+    isRecord(value) &&
+    (value.description === null || isString(value.description)) &&
+    (value.pageUrl === null || isString(value.pageUrl)) &&
+    // Free-form JSON: any value is valid, it is read defensively when shown.
+    "context" in value
+  );
+}
+
+const isCount = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
+
 function isCounts(value: unknown): value is IssueCounts {
   return (
     isRecord(value) &&
-    ISSUE_STATUSES.every((status) => Number.isInteger(value[status]))
+    isCount(value.all) &&
+    ISSUE_STATUSES.every((status) => isCount(value[status]))
+  );
+}
+
+function isPagination(value: unknown): value is IssuePagination {
+  return (
+    isRecord(value) &&
+    [value.page, value.limit, value.total, value.totalPages].every(isCount) &&
+    (value.page as number) >= 1
   );
 }
 
@@ -207,15 +238,19 @@ function isIssuePage(value: unknown): value is IssuePage {
   return (
     isRecord(value) &&
     Array.isArray(value.issues) &&
-    value.issues.every(isIssue) &&
-    (value.nextCursor === null || isString(value.nextCursor)) &&
+    value.issues.every(isIssueSummary) &&
+    isPagination(value.pagination) &&
     isCounts(value.counts)
   );
 }
 
 function isIssueRemoval(value: unknown): value is IssueRemoval {
-  return isRecord(value) && isString(value.issueId);
+  return isRecord(value) && value.deleted === true && Number.isInteger(value.number);
 }
+
+/** Whether a later page exists after this one. */
+export const hasNextPage = (page: IssuePage) =>
+  page.pagination.page < page.pagination.totalPages;
 
 function fieldErrorsFrom(details: unknown): IssueFieldErrors | undefined {
   if (!Array.isArray(details)) return undefined;
@@ -274,18 +309,18 @@ const issuesPath = (orgId: string, projectSlug: string) =>
 const issuePath = (orgId: string, projectSlug: string, number: number) =>
   `${issuesPath(orgId, projectSlug)}/${encodeURIComponent(String(number))}`;
 
-/** Builds the list query; unset filters are left out entirely. */
-export function issueListQuery(
-  filters: IssueFilters,
-  cursor: string | null = null,
-): string {
+/**
+ * Builds the list query; unset filters and page 1 are left out entirely.
+ * The API rejects unknown query keys, so only its names are used.
+ */
+export function issueListQuery(filters: IssueFilters, page = 1): string {
   const params = new URLSearchParams();
 
   if (filters.status) params.set("status", filters.status);
   if (filters.priority) params.set("priority", filters.priority);
   if (filters.type) params.set("type", filters.type);
-  if (filters.assignee) params.set("assignee", filters.assignee);
-  if (cursor) params.set("cursor", cursor);
+  if (filters.assignee) params.set("assigneeId", filters.assignee);
+  if (page > 1) params.set("page", String(page));
 
   const query = params.toString();
   return query ? `?${query}` : "";
@@ -295,10 +330,10 @@ export async function listIssues(
   orgId: string,
   projectSlug: string,
   filters: IssueFilters,
-  cursor: string | null = null,
+  page = 1,
 ): Promise<IssueApiOutcome<IssuePage>> {
   const res = await apiFetch<unknown>(
-    `${issuesPath(orgId, projectSlug)}${issueListQuery(filters, cursor)}`,
+    `${issuesPath(orgId, projectSlug)}${issueListQuery(filters, page)}`,
     { method: "GET" },
   );
 

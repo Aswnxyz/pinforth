@@ -1,4 +1,8 @@
-import type { IssuePriority, IssueStatus, IssueType } from "./api";
+import type { IssuePerson, IssuePriority, IssueStatus, IssueType } from "./api";
+
+/** An account's name is optional, so fall back to the email. */
+export const personName = (person: Pick<IssuePerson, "name" | "email">) =>
+  person.name?.trim() || person.email;
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   NEW: "New",

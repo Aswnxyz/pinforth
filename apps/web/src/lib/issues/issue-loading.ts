@@ -1,6 +1,7 @@
 import { listMembers, type OrganizationMember } from "@/lib/organizations/members-api";
 import { getProject, type ProjectDetail } from "@/lib/projects/api";
 import type { IssuePage } from "./api";
+import { personName } from "./labels";
 
 /**
  * The pure loading pieces of the issue routes: how an API outcome maps to a
@@ -89,7 +90,7 @@ export async function loadIssueWorkspace(
 }
 
 export interface AssigneeOption {
-  /** The user's account id, which is what an issue is assigned to. */
+  /** The membership id, which is what an issue is assigned to. */
   id: string;
   label: string;
 }
@@ -97,23 +98,23 @@ export interface AssigneeOption {
 export function assigneeOptions(
   members: readonly OrganizationMember[],
 ): AssigneeOption[] {
-  return members.map((member) => ({
-    id: member.user.id,
-    label: member.isYou ? `${member.user.name} (you)` : member.user.name,
-  }));
+  return members.map((member) => {
+    const name = personName(member.user);
+    return { id: member.id, label: member.isYou ? `${name} (you)` : name };
+  });
 }
 
 /**
- * Appends a "Load more" page. An issue already on screen is not repeated —
- * one created in between can shift the next page by a row — and the newest
- * page's counts and cursor win.
+ * Appends a "Load more" page. Paging is by offset, so an issue created in
+ * between shifts the next page by a row: one already on screen is not
+ * repeated. The newest page's counts and position win.
  */
 export function mergeIssuePages(current: IssuePage, next: IssuePage): IssuePage {
   const seen = new Set(current.issues.map((issue) => issue.id));
 
   return {
     issues: [...current.issues, ...next.issues.filter((issue) => !seen.has(issue.id))],
-    nextCursor: next.nextCursor,
+    pagination: next.pagination,
     counts: next.counts,
   };
 }
