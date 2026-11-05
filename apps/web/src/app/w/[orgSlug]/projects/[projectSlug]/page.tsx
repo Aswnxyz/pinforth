@@ -896,6 +896,21 @@ function ProjectDetailSection({
           ) : null}
 
           <ProjectOverview orgSlug={organization.slug} project={project} />
+
+          <Link
+            href={`/w/${organization.slug}/projects/${project.slug}/issues`}
+            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-5 shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <span className="min-w-0">
+              <span className="block text-base font-semibold text-foreground">Issues</span>
+              <span className="mt-0.5 block text-sm leading-6 text-muted-foreground">
+                Problems and requests found while reviewing this website.
+              </span>
+            </span>
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4 shrink-0 fill-current text-muted-foreground">
+              <path d="M6.22 12.78a.75.75 0 0 0 1.06 0l4.25-4.25a.75.75 0 0 0 0-1.06L7.28 3.22a.75.75 0 0 0-1.06 1.06L9.19 8l-2.97 2.97a.75.75 0 0 0 0 1.06Z" />
+            </svg>
+          </Link>
         </>
       )}
 
