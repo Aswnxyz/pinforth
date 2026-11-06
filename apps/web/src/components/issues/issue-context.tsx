@@ -6,24 +6,46 @@ import { safeWebsiteUrl } from "@/lib/projects/urls";
  * Reads the widget-captured context defensively: it is free-form JSON, so
  * only values of the expected type are shown and everything else is ignored.
  */
-export function readIssueContext(context: Issue["context"]): {
+export interface ReadableContext {
   selector: string | null;
+  /** e.g. `BUTTON · “Place order”`. */
+  element: string | null;
   viewport: string | null;
+  /** e.g. `iPhone · en-US`. */
   browser: string | null;
-} {
-  const value: Record<string, unknown> =
-    typeof context === "object" && context !== null && !Array.isArray(context)
-      ? (context as Record<string, unknown>)
-      : {};
-  const viewport = value.viewport as { width?: unknown; height?: unknown } | null | undefined;
+  userAgent: string | null;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const text = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+export function readIssueContext(context: Issue["context"]): ReadableContext {
+  const value = asRecord(context);
+  const viewport = asRecord(value.viewport);
+  const element = asRecord(value.element);
+  // Older issues stored the browser as one string; the widget sends an object.
+  const browser = asRecord(value.browser);
+
+  const tag = text(element.tagName);
+  const label = text(element.textContent);
+  const dpr = viewport.devicePixelRatio;
 
   return {
-    selector: typeof value.selector === "string" ? value.selector : null,
+    selector: text(value.selector),
+    element: tag || label ? [tag, label ? `“${label}”` : null].filter(Boolean).join(" · ") : null,
     viewport:
-      viewport && Number.isFinite(viewport.width) && Number.isFinite(viewport.height)
-        ? `${viewport.width} × ${viewport.height}`
+      Number.isFinite(viewport.width) && Number.isFinite(viewport.height)
+        ? `${viewport.width} × ${viewport.height}${Number.isFinite(dpr) && dpr !== 1 ? ` @${dpr}x` : ""}`
         : null,
-    browser: typeof value.browser === "string" ? value.browser : null,
+    browser:
+      text(value.browser) ??
+      ([text(browser.platform), text(browser.language)].filter(Boolean).join(" · ") || null),
+    userAgent: text(browser.userAgent),
   };
 }
 
@@ -32,8 +54,8 @@ export function readIssueContext(context: Issue["context"]): {
  * Renders nothing until the feedback widget fills these in.
  */
 export function IssueContext({ issue }: { issue: Pick<Issue, "pageUrl" | "context"> }) {
-  const { selector, viewport, browser } = readIssueContext(issue.context);
-  if (!issue.pageUrl && !selector && !viewport && !browser) return null;
+  const { selector, element, viewport, browser, userAgent } = readIssueContext(issue.context);
+  if (!issue.pageUrl && !selector && !element && !viewport && !browser && !userAgent) return null;
 
   // Only a normal web address may become a link; anything else is shown as
   // text so it can never execute on click.
@@ -63,13 +85,27 @@ export function IssueContext({ issue }: { issue: Pick<Issue, "pageUrl" | "contex
             )}
           </Row>
         ) : null}
-        {selector ? (
+        {selector || element ? (
           <Row label="Element">
-            <code className="font-mono text-sm break-all text-foreground">{selector}</code>
+            {element ? <span className="block wrap-break-word">{element}</span> : null}
+            {selector ? (
+              <code className="block font-mono text-sm break-all text-muted-foreground">
+                {selector}
+              </code>
+            ) : null}
           </Row>
         ) : null}
         {viewport ? <Row label="Screen size">{viewport}</Row> : null}
-        {browser ? <Row label="Browser">{browser}</Row> : null}
+        {browser || userAgent ? (
+          <Row label="Browser">
+            {browser ? <span className="block">{browser}</span> : null}
+            {userAgent ? (
+              <span className="block font-mono text-xs break-all text-muted-foreground">
+                {userAgent}
+              </span>
+            ) : null}
+          </Row>
+        ) : null}
       </dl>
     </section>
   );

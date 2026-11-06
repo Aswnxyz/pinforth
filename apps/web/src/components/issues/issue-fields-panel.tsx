@@ -16,6 +16,7 @@ import {
   ISSUE_STATUS_LABELS,
   ISSUE_TYPE_LABELS,
   personName,
+  reporterName,
 } from "@/lib/issues/labels";
 
 const NONE = "";
@@ -132,10 +133,10 @@ export function IssueFieldsPanel({
       />
 
       <dl className="space-y-3 border-t border-border pt-4">
-        <ReadOnlyField
-          label="Reported by"
-          value={issue.reporter ? personName(issue.reporter) : "Guest reviewer"}
-        />
+        <ReadOnlyField label="Reported by" value={reporterName(issue)} />
+        {issue.reviewRound ? (
+          <ReadOnlyField label="Review round" value={issue.reviewRound.name} />
+        ) : null}
         <ReadOnlyField label="Opened" value={formatIssueDate(issue.createdAt)} />
         <ReadOnlyField label="Last updated" value={formatIssueDate(issue.updatedAt)} />
         <ReadOnlyField

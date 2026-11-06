@@ -16,6 +16,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Guest review links carry a secret in the fragment.
+        source: "/review",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      {
         source: "/invite",
         headers: [
           {

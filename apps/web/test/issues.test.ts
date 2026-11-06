@@ -11,7 +11,7 @@ import {
   type IssuePage,
   type IssueSummary,
 } from "@/lib/issues/api";
-import { personName } from "@/lib/issues/labels";
+import { personName, reporterName } from "@/lib/issues/labels";
 import {
   assigneeOptions,
   loadIssueWorkspace,
@@ -154,6 +154,28 @@ describe("issue client", () => {
     stubFetch(() => jsonResponse({ success: true, data: { issue: unnamed } }, 200));
 
     expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("success");
+  });
+
+  it("accepts a guest-reported widget issue, as the API returns it", async () => {
+    const guestIssue = {
+      ...issue,
+      source: "WIDGET",
+      reporter: null,
+      guest: { name: "Alice Client", email: null },
+      reviewRound: { id: "r-1", name: "Sprint 14 Client QA" },
+      environment: { id: "env-1", name: "Staging", slug: "staging" },
+    };
+    stubFetch(() => jsonResponse({ success: true, data: { issue: guestIssue } }, 200));
+
+    expect(await getIssue(ORG_ID, PROJECT, 12)).toEqual({ status: "success", data: guestIssue });
+  });
+
+  it("rejects a malformed guest", async () => {
+    stubFetch(() =>
+      jsonResponse({ success: true, data: { issue: { ...issue, guest: { name: 5 } } } }, 200),
+    );
+
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("unavailable");
   });
 
   it("accepts any JSON as the widget context", async () => {
@@ -480,22 +502,51 @@ describe("issue loading", () => {
 });
 
 describe("readIssueContext", () => {
-  it("shows only well-typed widget values", () => {
+  const EMPTY = { selector: null, element: null, viewport: null, browser: null, userAgent: null };
+
+  it("reads the widget's structured context", () => {
     expect(
       readIssueContext({
-        selector: "#contact > button",
-        viewport: { width: 390, height: 844 },
-        browser: "Safari 18 on iOS",
+        selector: "main > form#checkout-form button[type='submit']",
+        element: { tagName: "BUTTON", textContent: "Place Order" },
+        viewport: { width: 390, height: 844, devicePixelRatio: 3 },
+        browser: { userAgent: "Mozilla/5.0 (iPhone)", language: "en-US", platform: "iPhone" },
       }),
-    ).toEqual({ selector: "#contact > button", viewport: "390 × 844", browser: "Safari 18 on iOS" });
+    ).toEqual({
+      selector: "main > form#checkout-form button[type='submit']",
+      element: "BUTTON · “Place Order”",
+      viewport: "390 × 844 @3x",
+      browser: "iPhone · en-US",
+      userAgent: "Mozilla/5.0 (iPhone)",
+    });
+  });
+
+  it("still reads an older browser string", () => {
+    expect(
+      readIssueContext({ viewport: { width: 1280, height: 800, devicePixelRatio: 1 }, browser: "Safari 18" }),
+    ).toEqual({ ...EMPTY, viewport: "1280 × 800", browser: "Safari 18" });
   });
 
   it("ignores missing or malformed values", () => {
-    expect(readIssueContext(null)).toEqual({ selector: null, viewport: null, browser: null });
-    expect(readIssueContext(["x"])).toEqual({ selector: null, viewport: null, browser: null });
-    expect(readIssueContext({ viewport: null })).toEqual({ selector: null, viewport: null, browser: null });
+    expect(readIssueContext(null)).toEqual(EMPTY);
+    expect(readIssueContext(["x"])).toEqual(EMPTY);
+    expect(readIssueContext({ viewport: null, element: null, browser: null })).toEqual(EMPTY);
     expect(
-      readIssueContext({ selector: 42, viewport: { width: "wide" }, browser: ["x"] }),
-    ).toEqual({ selector: null, viewport: null, browser: null });
+      readIssueContext({ selector: 42, viewport: { width: "wide" }, browser: ["x"], element: "x" }),
+    ).toEqual(EMPTY);
+  });
+});
+
+describe("reporterName", () => {
+  it("names a member, a guest, or an anonymous guest", () => {
+    expect(reporterName({ reporter: person, guest: null })).toBe("Rahul");
+    expect(reporterName({ reporter: null, guest: { name: "Alice", email: "a@x.com" } })).toBe(
+      "Alice (guest)",
+    );
+    expect(reporterName({ reporter: null, guest: { name: null, email: "a@x.com" } })).toBe(
+      "a@x.com (guest)",
+    );
+    expect(reporterName({ reporter: null, guest: null })).toBe("Guest reviewer");
+    expect(reporterName({ reporter: null })).toBe("Guest reviewer");
   });
 });
