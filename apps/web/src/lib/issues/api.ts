@@ -47,12 +47,22 @@ export interface IssueSummary {
   priority: IssuePriority;
   status: IssueStatus;
   source: IssueSource;
-  /** Null once a guest reviewer (no account) can report issues. */
+  /** Null when a guest reviewer (no account) reported it; see `guest`. */
   reporter: IssuePerson | null;
+  /** The guest reviewer who reported it through the widget. */
+  guest?: IssueGuest | null;
+  /** The review round a widget issue was reported in. */
+  reviewRound?: { id: string; name: string } | null;
   assignee: IssuePerson | null;
   environment: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Both are optional on a guest link; either may be missing. */
+export interface IssueGuest {
+  name: string | null;
+  email: string | null;
 }
 
 /** The full issue, as the single-issue endpoints return it. */
@@ -195,6 +205,14 @@ export function isIssueSummary(value: unknown): value is IssueSummary {
     isStatus(value.status) &&
     isSource(value.source) &&
     (value.reporter === null || isPerson(value.reporter)) &&
+    (value.guest == null ||
+      (isRecord(value.guest) &&
+        (value.guest.name === null || isString(value.guest.name)) &&
+        (value.guest.email === null || isString(value.guest.email)))) &&
+    (value.reviewRound == null ||
+      (isRecord(value.reviewRound) &&
+        isString(value.reviewRound.id) &&
+        isString(value.reviewRound.name))) &&
     (value.assignee === null || isPerson(value.assignee)) &&
     (value.environment === null ||
       (isRecord(value.environment) &&

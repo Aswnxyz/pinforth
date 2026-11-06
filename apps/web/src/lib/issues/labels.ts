@@ -1,8 +1,21 @@
-import type { IssuePerson, IssuePriority, IssueStatus, IssueType } from "./api";
+import type {
+  IssuePerson,
+  IssuePriority,
+  IssueStatus,
+  IssueSummary,
+  IssueType,
+} from "./api";
 
 /** An account's name is optional, so fall back to the email. */
 export const personName = (person: Pick<IssuePerson, "name" | "email">) =>
   person.name?.trim() || person.email;
+
+/** Who reported an issue: a team member, or a guest from a review link. */
+export function reporterName(issue: Pick<IssueSummary, "reporter" | "guest">): string {
+  if (issue.reporter) return personName(issue.reporter);
+  const guest = issue.guest?.name?.trim() || issue.guest?.email?.trim();
+  return guest ? `${guest} (guest)` : "Guest reviewer";
+}
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   NEW: "New",
