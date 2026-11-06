@@ -79,6 +79,16 @@ export interface IssueUser {
   email: string;
 }
 
+export interface IssueGuest {
+  name: string | null;
+  email: string | null;
+}
+
+export interface IssueReviewRound {
+  id: string;
+  name: string;
+}
+
 export interface IssueAssignee {
   id: string;
   name: string | null;
@@ -100,7 +110,9 @@ export interface IssueSummary {
   status: IssueStatus;
   source: IssueSource;
   environment: IssueEnvironment | null;
-  reporter: IssueUser;
+  reporter: IssueUser | null;
+  guest?: IssueGuest | null;
+  reviewRound?: IssueReviewRound | null;
   assignee: IssueAssignee | null;
   createdAt: string;
   updatedAt: string;

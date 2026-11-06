@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getMembership, requireMembershipRole } from "../../middleware/require-org-role.js";
 import { getProject, requireProject } from "../../middleware/require-project.js";
 import issueRoutes from "../issues/issues.routes.js";
+import reviewRoundRoutes from "../review-rounds/review-rounds.routes.js";
 import {
   createEnvironmentSchema,
   createProjectSchema,
@@ -65,5 +66,6 @@ router.patch("/:projectSlug/environments/:environmentId", requireProject, canMan
 });
 
 router.use("/:projectSlug/issues", requireProject, issueRoutes);
+router.use("/:projectSlug/review-rounds", requireProject, reviewRoundRoutes);
 
 export default router;

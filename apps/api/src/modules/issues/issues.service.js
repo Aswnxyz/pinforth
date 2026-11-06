@@ -26,11 +26,19 @@ const issueSelectSummary = {
   priority: true,
   status: true,
   source: true,
+  guestName: true,
+  guestEmail: true,
   createdAt: true,
   updatedAt: true,
   environment: { select: environmentSelect },
   reporter: { select: userSelect },
   assignee: { select: memberSelect },
+  reviewRound: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
 };
 
 const issueSelectDetail = {
@@ -59,7 +67,20 @@ const toIssueSummary = (issue) => ({
   status: issue.status,
   source: issue.source,
   environment: issue.environment,
-  reporter: issue.reporter,
+  reporter: issue.reporter ?? null,
+  guest:
+    issue.guestName || issue.guestEmail
+      ? {
+          name: issue.guestName,
+          email: issue.guestEmail,
+        }
+      : null,
+  reviewRound: issue.reviewRound
+    ? {
+        id: issue.reviewRound.id,
+        name: issue.reviewRound.name,
+      }
+    : null,
   assignee: toAssignee(issue.assignee),
   createdAt: issue.createdAt.toISOString(),
   updatedAt: issue.updatedAt.toISOString(),
