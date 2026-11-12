@@ -8,6 +8,7 @@ import { EditProjectForm } from "@/components/projects/edit-project-form";
 import { EnvironmentForm } from "@/components/projects/environment-form";
 import { EnvironmentList } from "@/components/projects/environment-list";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { EnvironmentInvite } from "@/components/review-rounds/environment-invite";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
 import { WorkspaceLoading } from "@/components/workspace/workspace-states";
 import { FormAlert } from "@/components/ui/form-alert";
@@ -177,6 +178,12 @@ function ProjectDetailSection({
     environmentEdit && environmentEdit.key === requestKey
       ? environmentEdit
       : null;
+
+  // The environment whose reviewer invite is open, bound to the request key
+  // like the other sessions. The invite owns its own requests.
+  const [inviting, setInviting] = useState<{ key: string; environmentId: string } | null>(null);
+  const activeInviteId =
+    inviting && inviting.key === requestKey ? inviting.environmentId : null;
 
   useEffect(() => {
     // The session was confirmed invalid by the API's refresh flow.
@@ -883,7 +890,8 @@ function ProjectDetailSection({
               cannot compete for the same request guard. */}
           {canManageProjects(organization.role) &&
           !activeAdding &&
-          !activeEnvironmentEdit ? (
+          !activeEnvironmentEdit &&
+          !activeInviteId ? (
             <div className="flex justify-end">
               <button
                 type="button"
@@ -911,21 +919,6 @@ function ProjectDetailSection({
               <path d="M6.22 12.78a.75.75 0 0 0 1.06 0l4.25-4.25a.75.75 0 0 0 0-1.06L7.28 3.22a.75.75 0 0 0-1.06 1.06L9.19 8l-2.97 2.97a.75.75 0 0 0 0 1.06Z" />
             </svg>
           </Link>
-
-          <Link
-            href={`/w/${organization.slug}/projects/${project.slug}/review-rounds`}
-            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-5 shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            <span className="min-w-0">
-              <span className="block text-base font-semibold text-foreground">Review rounds</span>
-              <span className="mt-0.5 block text-sm leading-6 text-muted-foreground">
-                Invite clients and testers to give feedback on the website.
-              </span>
-            </span>
-            <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4 shrink-0 fill-current text-muted-foreground">
-              <path d="M6.22 12.78a.75.75 0 0 0 1.06 0l4.25-4.25a.75.75 0 0 0 0-1.06L7.28 3.22a.75.75 0 0 0-1.06 1.06L9.19 8l-2.97 2.97a.75.75 0 0 0 0 1.06Z" />
-            </svg>
-          </Link>
         </>
       )}
 
@@ -941,7 +934,8 @@ function ProjectDetailSection({
               while an environment edit is open. */}
           {canManageProjects(organization.role) &&
           !activeEdit &&
-          !activeEnvironmentEdit ? (
+          !activeEnvironmentEdit &&
+          !activeInviteId ? (
             <button
               type="button"
               onClick={() => setAdding(createEnvironmentCreationState(requestKey))}
@@ -961,7 +955,8 @@ function ProjectDetailSection({
           onEdit={
             canManageProjects(organization.role) &&
             !activeEdit &&
-            !activeAdding
+            !activeAdding &&
+            !activeInviteId
               ? (environment) => {
                   if (!environment.id) return;
                   setEnvironmentEdit(
@@ -969,6 +964,36 @@ function ProjectDetailSection({
                   );
                 }
               : undefined
+          }
+          // Guests reach the website through a personal link; the review
+          // round the API needs is found or created behind the scenes.
+          onInvite={
+            canManageProjects(organization.role) &&
+            !activeEdit &&
+            !activeAdding &&
+            !activeEnvironmentEdit &&
+            !activeInviteId
+              ? (environment) => {
+                  if (!environment.id) return;
+                  setInviting({ key: requestKey, environmentId: environment.id });
+                }
+              : undefined
+          }
+          panel={(environment) =>
+            environment.id && environment.id === activeInviteId ? (
+              <EnvironmentInvite
+                key={environment.id}
+                orgId={organization.id}
+                projectSlug={projectSlug}
+                environment={{ id: environment.id, name: environment.name }}
+                onClose={() => setInviting(null)}
+                onGone={() => {
+                  setInviting(null);
+                  setRetryToken((token) => token + 1);
+                }}
+                onLogin={() => router.replace("/login")}
+              />
+            ) : null
           }
         />
 

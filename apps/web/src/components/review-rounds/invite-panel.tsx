@@ -34,22 +34,20 @@ const IDLE_REVOKE: RevokeState = { confirming: false, pending: false, message: n
 
 /**
  * Invites one reviewer to one round: the form, the one-time link, and
- * revoking it. Owns its requests; the page is told about count changes and
- * about outcomes it has to handle (session over, round gone).
+ * revoking it. Owns its requests; the page is told about outcomes it has to
+ * handle (session over, round gone).
  */
 export function InvitePanel({
   orgId,
   projectSlug,
   round,
-  onActiveLinksChange,
   onClose,
   onGone,
   onLogin,
 }: {
   orgId: string;
   projectSlug: string;
-  round: { id: string; name: string };
-  onActiveLinksChange: (delta: number) => void;
+  round: { id: string };
   onClose: () => void;
   onGone: () => void;
   onLogin: () => void;
@@ -69,7 +67,6 @@ export function InvitePanel({
     if (!guard.current.accept(token)) return;
 
     if (outcome.status === "success") {
-      onActiveLinksChange(1);
       setPhase({ kind: "created", created: outcome.data, revoke: IDLE_REVOKE });
       return;
     }
@@ -101,7 +98,6 @@ export function InvitePanel({
     if (!guard.current.accept(token)) return;
 
     if (outcome.status === "success") {
-      onActiveLinksChange(-1);
       setRevoke({ pending: false, confirming: false, revoked: true });
       return;
     }
@@ -129,7 +125,6 @@ export function InvitePanel({
 
   return (
     <GuestLinkForm
-      roundName={round.name}
       onSubmit={(values) => void handleCreate(values)}
       onCancel={onClose}
       pending={phase.pending}
