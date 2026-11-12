@@ -49,3 +49,6 @@ Thumbs.db
 
 # Prisma generated client
 /apps/api/src/generated/prisma/
+# Feedback widget build outputs
+apps/web/public/widget/
+packages/widget/demo/widget.js

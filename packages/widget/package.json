@@ -1,0 +1,22 @@
+{
+  "name": "@pinforth/widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Pinforth feedback widget embedded on review websites.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@medv/finder": "4.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "happy-dom": "21.0.4",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  }
+}

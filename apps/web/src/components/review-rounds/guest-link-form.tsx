@@ -25,7 +25,6 @@ const dayLabel = (days: number) => (days === 1 ? "1 day" : `${days} days`);
  * owns `pending`, the message and the field errors.
  */
 export function GuestLinkForm({
-  roundName,
   onSubmit,
   onCancel,
   pending,
@@ -33,7 +32,6 @@ export function GuestLinkForm({
   fieldErrors,
   submitLabel = "Create review link",
 }: {
-  roundName: string;
   onSubmit: (values: GuestLinkValues) => void;
   onCancel: () => void;
   pending: boolean;
@@ -81,8 +79,8 @@ export function GuestLinkForm({
       <div>
         <h3 className="text-sm font-semibold text-foreground">Invite a reviewer</h3>
         <p className="mt-0.5 text-sm leading-6 text-muted-foreground">
-          They don’t need a Pinforth account. Their feedback is labelled with the name you
-          give here and filed under “{roundName}”.
+          They don’t need a Pinforth account. They get a personal link that opens the website
+          with a Feedback button, and their reports are labelled with the name you give here.
         </p>
       </div>
 

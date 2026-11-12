@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { safeWebsiteUrl } from "@/lib/projects/urls";
 
 /**
@@ -16,6 +17,9 @@ export interface EnvironmentListItem {
   createdAt?: string;
 }
 
+const rowButtonClass =
+  "inline-flex h-9 shrink-0 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
 /**
  * The website environments configured for a project.
  *
@@ -27,10 +31,16 @@ export interface EnvironmentListItem {
 export function EnvironmentList({
   environments,
   onEdit,
+  onInvite,
+  panel,
 }: {
   environments: readonly EnvironmentListItem[];
   /** Receives the clicked row; absent renders a read-only list. */
   onEdit?: (environment: EnvironmentListItem) => void;
+  /** Offers "Invite reviewer" on each row when present. */
+  onInvite?: (environment: EnvironmentListItem) => void;
+  /** Content shown under a row, such as its open invite flow. */
+  panel?: (environment: EnvironmentListItem) => ReactNode;
 }) {
   if (environments.length === 0) {
     return (
@@ -46,64 +56,78 @@ export function EnvironmentList({
         // Only a normal web address may become a link; anything else (e.g. a
         // javascript: URL) is shown as text so it can never execute on click.
         const href = safeWebsiteUrl(environment.url);
+        const open = panel?.(environment);
 
         return (
-          <li
-            key={environment.id ?? environment.url}
-            className="flex items-start justify-between gap-3 px-4 py-3"
-          >
-            <div className="min-w-0">
-              <span className="block truncate text-sm font-medium text-foreground">
-                {environment.name}
-              </span>
+          <li key={environment.id ?? environment.url} className="px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {environment.name}
+                </span>
 
-              {href ? (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-0.5 inline-flex max-w-full items-center gap-1.5 font-mono text-sm break-all text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                >
-                  <span className="truncate">{href}</span>
-                  <span className="sr-only">(opens in a new tab)</span>
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 16 16"
-                    className="size-3.5 shrink-0 fill-current"
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 inline-flex max-w-full items-center gap-1.5 font-mono text-sm break-all text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   >
-                    <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06L9.69 8 6.22 4.53a.75.75 0 0 1 1.06 0Zm0 6.3a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Z" />
-                  </svg>
-                </a>
-              ) : (
-                <span className="mt-0.5 block font-mono text-sm break-all text-muted-foreground">
-                  {environment.url}
-                </span>
-              )}
+                    <span className="truncate">{href}</span>
+                    <span className="sr-only">(opens in a new tab)</span>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 16 16"
+                      className="size-3.5 shrink-0 fill-current"
+                    >
+                      <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06L9.69 8 6.22 4.53a.75.75 0 0 1 1.06 0Zm0 6.3a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Z" />
+                    </svg>
+                  </a>
+                ) : (
+                  <span className="mt-0.5 block font-mono text-sm break-all text-muted-foreground">
+                    {environment.url}
+                  </span>
+                )}
 
-              {environment.createdAt ? (
-                <span className="mt-1 block text-xs leading-4 text-muted-foreground">
-                  Added{" "}
-                  {new Date(environment.createdAt).toLocaleDateString(
-                    undefined,
-                    { year: "numeric", month: "short", day: "numeric" },
-                  )}
-                </span>
-              ) : null}
+                {environment.createdAt ? (
+                  <span className="mt-1 block text-xs leading-4 text-muted-foreground">
+                    Added{" "}
+                    {new Date(environment.createdAt).toLocaleDateString(
+                      undefined,
+                      { year: "numeric", month: "short", day: "numeric" },
+                    )}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 gap-2">
+                {onInvite && !open ? (
+                  <button
+                    type="button"
+                    onClick={() => onInvite(environment)}
+                    aria-label={`Invite a reviewer to the ${environment.name} environment at ${environment.url}`}
+                    className={rowButtonClass}
+                  >
+                    Invite reviewer
+                  </button>
+                ) : null}
+                {onEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(environment)}
+                    // Names the URL, not just the display name: two environments
+                    // may share a name, and each control must be distinguishable
+                    // when read aloud.
+                    aria-label={`Edit the ${environment.name} environment at ${environment.url}`}
+                    className={rowButtonClass}
+                  >
+                    Edit
+                  </button>
+                ) : null}
+              </div>
             </div>
 
-            {onEdit ? (
-              <button
-                type="button"
-                onClick={() => onEdit(environment)}
-                // Names the URL, not just the display name: two environments
-                // may share a name, and each control must be distinguishable
-                // when read aloud.
-                aria-label={`Edit the ${environment.name} environment at ${environment.url}`}
-                className="inline-flex h-9 shrink-0 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                Edit
-              </button>
-            ) : null}
+            {open ? <div className="mt-4 border-t border-border pt-4">{open}</div> : null}
           </li>
         );
       })}

@@ -6,15 +6,17 @@ import {
   listReviewRounds,
   revokeGuestLink,
 } from "@/lib/review-rounds/api";
-import { adjustActiveLinks } from "@/lib/review-rounds/review-loading";
+import {
+  activeRoundFor,
+  findOrCreateEnvironmentRound,
+  roundNameFor,
+} from "@/lib/review-rounds/environment-round";
 import {
   describeReviewFailure,
   EMPTY_GUEST_LINK_VALUES,
   toCreateGuestLinkInput,
-  toCreateReviewRoundInput,
   UNCONFIRMED_LINK_MESSAGE,
   validateGuestLink,
-  validateReviewRound,
 } from "@/lib/review-rounds/review-values";
 
 /**
@@ -142,22 +144,72 @@ describe("review round client", () => {
   });
 });
 
+describe("the environment's review round", () => {
+  const closed = { ...round, id: "closed", status: "CLOSED" as const, createdAt: "2026-11-09T00:00:00.000Z" };
+  const older = { ...round, id: "older", createdAt: "2026-11-01T00:00:00.000Z" };
+  const elsewhere = { ...round, id: "elsewhere", environment: { ...round.environment, id: "other-env" } };
+
+  it("uses the newest active round of that environment", () => {
+    expect(activeRoundFor([older, round, closed, elsewhere], ENV_ID)?.id).toBe(round.id);
+    expect(activeRoundFor([closed, elsewhere], ENV_ID)).toBeNull();
+  });
+
+  it("names a created round after the environment, within the API's limit", () => {
+    expect(roundNameFor("Staging")).toBe("Staging review");
+    expect(roundNameFor("x".repeat(200))).toHaveLength(180);
+  });
+
+  it("reuses an existing round without creating one", async () => {
+    const calls = stubFetch(() => jsonResponse({ success: true, data: { reviewRounds: [round] } }, 200));
+
+    expect(await findOrCreateEnvironmentRound(ORG_ID, PROJECT, { id: ENV_ID, name: "Staging" })).toEqual({
+      status: "ready",
+      round: { id: round.id, name: round.name },
+    });
+    expect(calls.map((call) => call.init.method)).toEqual(["GET"]);
+  });
+
+  it("creates the round the first time", async () => {
+    const calls = stubFetch((_url, init) =>
+      init.method === "GET"
+        ? jsonResponse({ success: true, data: { reviewRounds: [closed] } }, 200)
+        : jsonResponse({ success: true, data: { reviewRound: { ...round, id: "new", name: "Staging review" } } }, 201),
+    );
+
+    expect(await findOrCreateEnvironmentRound(ORG_ID, PROJECT, { id: ENV_ID, name: "Staging" })).toEqual({
+      status: "ready",
+      round: { id: "new", name: "Staging review" },
+    });
+    expect(JSON.parse(String(calls[1].init.body))).toEqual({ name: "Staging review", environmentId: ENV_ID });
+  });
+
+  it("after an unconfirmed create, a retry finds the round instead of making a second", async () => {
+    let created = false;
+    const calls = stubFetch((_url, init) => {
+      if (init.method === "POST") {
+        created = true;
+        return jsonResponse({ success: false, message: "down" }, 503);
+      }
+      return jsonResponse({ success: true, data: { reviewRounds: created ? [round] : [] } }, 200);
+    });
+
+    const env = { id: ENV_ID, name: "Staging" };
+    expect((await findOrCreateEnvironmentRound(ORG_ID, PROJECT, env)).status).toBe("failed");
+    expect(await findOrCreateEnvironmentRound(ORG_ID, PROJECT, env)).toMatchObject({ status: "ready" });
+    expect(calls.filter((call) => call.init.method === "POST")).toHaveLength(1);
+  });
+
+  it("maps an expired session and a gone project", async () => {
+    stubFetch(() => jsonResponse({ success: false, message: "x" }, 401));
+    // apiFetch tries a refresh first; it fails the same way.
+    expect((await findOrCreateEnvironmentRound(ORG_ID, PROJECT, { id: ENV_ID, name: "S" })).status).toBe("login");
+
+    stubFetch(() => jsonResponse({ success: false, message: "x" }, 404));
+    expect((await findOrCreateEnvironmentRound(ORG_ID, PROJECT, { id: ENV_ID, name: "S" })).status).toBe("gone");
+  });
+});
+
 describe("review form values", () => {
-  it("requires a name and a website", () => {
-    expect(validateReviewRound({ name: "  ", environmentId: "", description: "" })).toEqual({
-      name: "Name is required.",
-      environmentId: "Choose the website to review.",
-    });
-    expect(validateReviewRound({ name: "R", environmentId: ENV_ID, description: "" })).toEqual({});
-  });
-
-  it("leaves an empty description out of the POST", () => {
-    expect(toCreateReviewRoundInput({ name: " R ", environmentId: ENV_ID, description: "  " })).toEqual({
-      name: "R",
-      environmentId: ENV_ID,
-    });
-  });
-
   it("allows an anonymous link but checks a given email", () => {
     expect(validateGuestLink(EMPTY_GUEST_LINK_VALUES)).toEqual({});
     expect(validateGuestLink({ ...EMPTY_GUEST_LINK_VALUES, reviewerEmail: "nope" }).reviewerEmail).toBeDefined();
@@ -174,12 +226,6 @@ describe("review form values", () => {
       message: UNCONFIRMED_LINK_MESSAGE,
     });
     expect(describeReviewFailure({ status: "not-found" }, "x")).toEqual({ kind: "gone" });
-  });
-
-  it("adjusts one round's active links, never below zero", () => {
-    const rounds = [round, { ...round, id: "other" }];
-    expect(adjustActiveLinks(rounds, round.id, 1).map((r) => r.activeLinksCount)).toEqual([1, 0]);
-    expect(adjustActiveLinks(rounds, round.id, -1)[0].activeLinksCount).toBe(0);
   });
 });
 
