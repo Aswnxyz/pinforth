@@ -5,6 +5,7 @@ import {
   issueReference,
   ISSUE_TYPE_LABELS,
   personName,
+  reporterName,
 } from "@/lib/issues/labels";
 import { IssuePriorityBadge, IssueStatusBadge } from "./issue-badges";
 
@@ -40,7 +41,8 @@ export function IssueList({
               </p>
               <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
                 {ISSUE_TYPE_LABELS[issue.type]} · Opened {formatIssueDate(issue.createdAt)}
-                {issue.reporter ? ` by ${personName(issue.reporter)}` : ""}
+                {` by ${reporterName(issue)}`}
+                {issue.source === "WIDGET" ? " · via widget" : ""}
               </p>
             </div>
 
