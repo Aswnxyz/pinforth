@@ -6,7 +6,7 @@ Pinforth is an AI-assisted website feedback, issue tracking, QA verification, an
 
 It aims to simplify the complete website review and delivery process—from collecting visual feedback to verifying fixes and approving releases.
 
-> **Project Status:** Early Development — Database Foundation
+> **Project Status:** Active Development — Visual Feedback, Guest Reviews & Issue Management Foundation
 
 ## The Problem
 
@@ -16,40 +16,56 @@ This makes it difficult to track reported problems, communicate with clients, ve
 
 ## Our Solution
 
-Pinforth aims to bring the entire workflow into one collaborative platform:
+Pinforth brings the review and delivery workflow into one collaborative platform:
 
 **Visual Feedback → Issue Management → AI Assistance → Developer Fix → QA Verification → Client Approval**
 
-The key focus is not just reporting bugs, but ensuring that reported issues are resolved, verified, and approved before delivery.
+The key focus is not just reporting bugs, but ensuring that reported issues are resolved, independently retested on candidate deployments, and approved before delivery.
 
-## Planned Features
+## Current Capabilities
 
-### Visual Website Feedback
-- Lightweight, embeddable JavaScript feedback widget.
-- Element-based feedback pins and annotations.
-- Screenshot attachments and browser metadata.
-- Guest review links for clients.
+### Workspace & Project Management
+- Multi-project agency workspaces with tenant isolation.
+- Role-based access control (`OWNER`, `ADMIN`, `MEMBER`).
+- Organization team member management with last-owner protection.
+- Email invitations with token validation and expiration.
+- Project environments (e.g. staging, preview) with URL validation.
 
-### Project & Issue Management
-- Multi-project agency workspaces.
-- Role-based access for developers, testers, managers, and clients.
-- Issue assignment, prioritization, comments, and status tracking.
-- Review rounds and progress tracking.
+### Review Rounds & Scoped Guest Access
+- Review rounds linked to candidate website environments.
+- Guest review links with secret token conveyance via URL fragments (`#token=...`) to prevent server-side secret leakage.
+- Single-use handoff codes (`#pf_handoff=...`) exchanged via Pinforth web for short-lived (4-hour) widget session tokens.
+- Safe for modern browser privacy defaults (no third-party cookies required).
+
+### Embeddable Feedback Widget (`@pinforth/widget`)
+- Lightweight, zero-dependency browser script bundled as an IIFE (under 30 KB budget).
+- Interactive element selection with automated CSS selector capture (`@medv/finder`).
+- Captures viewport dimensions, scroll positions, and browser metadata.
+- Submits feedback directly to the Pinforth API using bearer session tokens and client idempotency keys.
+
+### Issue Tracking & Guest Attribution
+- Concurrency-safe sequential issue numbering per project (`#1`, `#2`, `#3`).
+- Issue classification by type (`BUG`, `DESIGN`, `CONTENT`, `SUGGESTION`) and priority (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+- Lifecycle status tracking (`NEW`, `IN_PROGRESS`, `READY_FOR_VERIFICATION`, `CLOSED`).
+- Attribution to registered agency members or guest reviewers (`guestName`, `guestEmail`, `guestLinkId`, `reviewRoundId`).
+- Filtered search, assignee filters (`me`, `unassigned`, specific UUID), and real-time status counts.
+
+## Planned Roadmap
+
+### Fix Verification & Retesting
+- Developer fix submissions linked to identifiable website deployments.
+- Independent QA verification on target candidate deployments.
+- Full audit history preserving previous verification attempts and reopens.
+
+### Release Readiness & Client Sign-Off
+- Release readiness view tracking unresolved blockers and QA verification status.
+- Scoped client release approval experience with auditable sign-off records.
+- Deployment immutability: approving deployment A never implicitly approves deployment B.
 
 ### AI-Assisted Workflows
-- Convert client feedback into structured issue reports.
-- Suggest issue descriptions and acceptance criteria.
-- Identify potential duplicate feedback.
-- Future integration with AI coding agents through MCP.
-
-### Fix Verification & Approval
-- Track fixes against website deployment versions.
-- Compare original and updated evidence.
-- QA verification and issue reopening.
-- Client review and release approval.
-- Delivery history and approval records.
-
-**Note:** These capabilities represent the product roadmap and are not yet implemented.
+- Clarify unstructured client feedback into reproducible issues and acceptance criteria.
+- Duplicate and related report detection.
+- Scoped MCP server integration for developer coding agents.
 
 ## Technology Stack
 
@@ -60,22 +76,27 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 | Backend | Node.js, Express.js 5, JavaScript (ES modules) |
 | Database | PostgreSQL 17, Prisma ORM 7 |
 | Validation | Zod |
+| Feedback Widget | Vanilla TypeScript, esbuild (IIFE bundle) |
 | Package Management | pnpm Workspaces |
+| Continuous Integration | GitHub Actions |
 | Background Processing (planned) | Redis, BullMQ |
 | AI Integration (planned) | LLM APIs |
-| Testing | Vitest, Supertest (API); Playwright planned |
+| Testing | Vitest, Supertest (API), Happy DOM (Widget) |
 
-The project is a pnpm workspaces monorepo. The frontend and the shared package use TypeScript; the backend (`apps/api`) is plain JavaScript (ES modules) and runs directly on Node.js with no build step. Turborepo is not currently part of the setup.
+The project is a pnpm workspaces monorepo. The frontend (`apps/web`), feedback widget (`packages/widget`), and shared package (`packages/shared`) use TypeScript; the backend (`apps/api`) is plain JavaScript (ES modules) and runs directly on Node.js with no build step.
 
 ## Project Structure
 
 ```text
 pinforth/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # GitHub Actions CI validation workflow
 ├── apps/
-│   ├── web/                    # Next.js frontend
-│   └── api/                    # Express.js backend
+│   ├── web/                   # Next.js frontend
+│   └── api/                   # Express.js backend
 │       ├── prisma/
-│       │   ├── schema.prisma   # Database models
+│       │   ├── schema.prisma  # Database models
 │       │   └── migrations/    # Versioned SQL migrations
 │       ├── src/
 │       │   ├── config/
@@ -83,21 +104,27 @@ pinforth/
 │       │   ├── lib/
 │       │   │   ├── errors.js  # AppError and HTTP error helpers
 │       │   │   └── prisma.js  # Prisma Client instance
-│       │   ├── middleware/    # Errors, origin checks, requireAuth, requireOrgRole, requireProject
+│       │   ├── middleware/    # Auth, org roles, error handlers
 │       │   ├── modules/
-│       │   │   ├── auth/      # Routes, service, sessions, tokens, cookies
-│       │   │   ├── invitations/  # Org invites and the accept flow
-│       │   │   ├── organizations/
-│       │   │   └── projects/  # Projects and environments
+│       │   │   ├── auth/          # Authentication & sessions
+│       │   │   ├── guest/         # Guest review link exchange & handoffs
+│       │   │   ├── invitations/   # Organization invites
+│       │   │   ├── issues/        # Issue tracking & guest attribution
+│       │   │   ├── organizations/ # Workspace & team management
+│       │   │   ├── projects/      # Projects & environments
+│       │   │   ├── review-rounds/ # Review rounds & guest links
+│       │   │   └── widget/        # Widget session & feedback endpoints
 │       │   └── scripts/
 │       │       └── check-db.js
-│       ├── test/              # Test database setup and DB tests
+│       ├── test/              # Vitest & Supertest API integration tests
 │       ├── prisma.config.js
 │       └── vitest.config.js
 │
 ├── packages/
-│   └── shared/                 # Shared types and Zod schemas
+│   ├── shared/                # Shared types and Zod schemas
+│   └── widget/                # Embeddable website feedback widget
 │
+├── docs/                      # Architectural contracts and design briefs
 ├── docker-compose.yml         # Local PostgreSQL and Mailpit
 ├── .env.example
 ├── package.json
@@ -105,8 +132,6 @@ pinforth/
 ├── pnpm-lock.yaml
 └── README.md
 ```
-
-Additional packages, including the embeddable feedback SDK and background workers, will be introduced as development progresses.
 
 ## Getting Started
 
@@ -134,7 +159,7 @@ If pnpm requests build-script approval, review the dependencies before running `
 
 ### Local database
 
-PostgreSQL 17 runs in Docker. Data is kept in the `pinforth_pgdata` volume, so it survives restarts and `pnpm db:down`.
+PostgreSQL 17 runs in Docker. Data is kept in the `pgdata` volume, so it survives restarts and `pnpm db:down`.
 
 Create your local env file once (`.env` is git-ignored):
 
@@ -208,10 +233,6 @@ The database schema is maintained in `apps/api/prisma/schema.prisma`.
 
 Commit Prisma schema and migration files to Git. Generated Prisma Client files are excluded from version control.
 
-Each developer should configure their own root `.env` file using `.env.example`. If the default PostgreSQL port `5432` is occupied, update both `POSTGRES_PORT` and `DATABASE_URL` in the local `.env`.
-
-**Warning:** `pnpm db:reset` deletes all data in the local PostgreSQL volume. Use it only when intentionally resetting the local development database.
-
 ### Start development servers
 
 ```bash
@@ -224,34 +245,103 @@ This builds the shared package and starts the frontend and backend concurrently.
 |---|---|
 | Frontend | http://localhost:3000 |
 | Backend | http://localhost:4000 |
+| Feedback Widget Demo | http://localhost:5500 (`pnpm dev:widget`) |
 | API Health Check | http://localhost:4000/api/v1/health |
 
 ### Available Commands
 
 | Command | Description |
 |---|---|
-| `pnpm dev` | Start frontend and backend |
-| `pnpm dev:web` | Start Next.js frontend |
-| `pnpm dev:api` | Start Express backend |
+| `pnpm dev` | Start frontend and backend concurrently |
+| `pnpm dev:web` | Build shared/widget and start Next.js frontend |
+| `pnpm dev:api` | Build shared and start Express backend |
+| `pnpm dev:widget` | Build widget in watch mode and serve the local demo site |
+| `pnpm build` | Build all workspace packages (`shared`, `api`, `widget`, `web`) |
 | `pnpm build:shared` | Build shared TypeScript package |
-| `pnpm build` | Build all workspace packages |
-| `pnpm lint:web` | Run frontend ESLint |
-| `pnpm db:up` / `pnpm db:down` | Start / stop local PostgreSQL |
-| `pnpm test:api` | Run API tests against the test database |
+| `pnpm build:widget` | Bundle feedback widget (`dist/` and `apps/web/public/widget/v1.js`) |
+| `pnpm build:api` | Generate Prisma Client |
+| `pnpm build:web` | Build Next.js production bundle |
+| `pnpm lint:web` | Run Next.js ESLint on the frontend |
+| `pnpm typecheck:shared` | Type-check shared TypeScript package |
+| `pnpm --filter @pinforth/widget typecheck` | Type-check feedback widget package |
+| `pnpm test:web` | Run Next.js frontend unit tests with Vitest |
+| `pnpm test:widget` | Run feedback widget tests with Vitest and Happy DOM |
+| `pnpm test:api` | Run API integration tests against the isolated test database |
+| `pnpm db:up` / `pnpm db:down` | Start / stop local PostgreSQL in Docker |
+| `pnpm db:status` / `pnpm db:logs` | Check container health / follow logs |
+| `pnpm db:psql` | Open a `psql` shell in the database container |
+| `pnpm db:reset` | Reset PostgreSQL container volume and start fresh |
+| `pnpm mail:up` / `pnpm mail:down` | Start / stop local Mailpit SMTP server |
 
 When running individual applications, build the shared package first. Changes to shared package source may require rebuilding it during development.
 
 ### Running tests
 
-API tests use Vitest and Supertest against a separate `<database>_test` database (for example `pinforth_test`), so your development data is never touched. With PostgreSQL running:
+Pinforth includes dedicated test suites for the web frontend, feedback widget, and backend API:
 
 ```bash
+# Run web unit tests
+pnpm test:web
+
+# Run feedback widget tests
+pnpm test:widget
+
+# Run API integration tests (requires PostgreSQL running via pnpm db:up)
 pnpm test:api
 ```
 
-The test database is created and migrated automatically on each run, and tables are emptied between tests. Tests refuse to run against any database whose name does not end in `_test`. Set `TEST_DATABASE_URL` in `.env` to use a different database.
+#### API Test Database Isolation
 
-### API environment
+API tests use Vitest and Supertest against a separate `<database>_test` database (for example `pinforth_test`), so development data is never touched.
+
+- The global setup connects to the PostgreSQL administrative database (`postgres`), checks if the test database exists, and creates it if not.
+- All committed migrations are deployed automatically using `prisma migrate deploy`.
+- Application tables are truncated between tests while migration history is preserved.
+- Safety check: API tests refuse to run against any database whose name does not end in `_test`.
+- Set `TEST_DATABASE_URL` in `.env` or the environment to override the test database URL.
+
+#### Static Verification
+
+```bash
+# Lint web application
+pnpm lint:web
+
+# Typecheck packages
+pnpm typecheck:shared
+pnpm --filter @pinforth/widget typecheck
+```
+
+## Continuous Integration
+
+Every pull request targeting `main` and pushes to `main` are automatically validated by GitHub Actions (`.github/workflows/ci.yml`).
+
+### Workflow Pipeline
+
+The CI workflow executes the following pipeline:
+
+1. **Dependency Installation:** `pnpm install --frozen-lockfile` with cached pnpm store.
+2. **Web Linting:** `pnpm lint:web` via ESLint.
+3. **Type Checking:** `pnpm typecheck:shared` and `pnpm --filter @pinforth/widget typecheck`.
+4. **Web Tests:** `pnpm test:web` with Vitest.
+5. **Widget Tests:** `pnpm test:widget` with Vitest and Happy DOM.
+6. **Prisma Schema Validation:** `pnpm --filter @pinforth/api exec prisma validate`.
+7. **API Tests & Database Migrations:** `pnpm test:api` against a disposable PostgreSQL 17 service container. The global test setup automatically provisions an isolated `_test` database and verifies that all committed migrations deploy successfully.
+8. **Monorepo Build:** `pnpm build` across shared, API, widget, and web workspaces.
+
+### Database Isolation in CI
+
+The CI job runs an ephemeral PostgreSQL 17 service container with health checks (`pg_isready`). The workflow provides:
+- `DATABASE_URL`: points to a disposable base database (`pinforth_ci_base`).
+- `TEST_DATABASE_URL`: points to an isolated test database ending in `_test` (`pinforth_ci_test`).
+
+The test runner provisions `pinforth_ci_test`, deploys migrations to it, and runs tests against it, keeping the base database untouched.
+
+### Branch Protection Check Name
+
+When configuring GitHub branch protection rules for `main`, require the status check named:
+- **`Validate`**
+
+## API Environment
 
 The API validates its environment on startup and exits with a clear message if anything is missing or invalid.
 
@@ -286,6 +376,8 @@ pnpm mail:down
 
 Tests don't use SMTP; they capture messages in memory.
 
+## API Reference
+
 ### Authentication API
 
 Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
@@ -303,13 +395,8 @@ Base path: `/api/v1/auth`. Auth uses two `httpOnly`, `SameSite=Lax` cookies:
 | `GET /me` | access | Current user and organization memberships |
 | `POST /forgot-password` | none | `{ email }`. Emails a single-use reset link (30 min). The response is identical whether or not the account exists |
 | `POST /reset-password` | none | `{ token, password }`. Sets the new password, verifies the email, signs out every device and sends a confirmation email. Does not sign the user in |
-
 | `POST /verify-email` | none | `{ token }`. Confirms the email from the link sent at signup. Works on any device without signing in |
 | `POST /resend-verification` | access | Sends a new link and invalidates the old one. Returns `{ alreadyVerified: true }` (200) if there is nothing to do. Limited to 3 per hour |
-
-The reset and verification emails link to `${APP_URL}/reset-password?token=…` and `${APP_URL}/verify-email?token=…`. Both web pages must send `Referrer-Policy: no-referrer`, so the token never leaks through the `Referer` header.
-
-Users can sign in before confirming their email. Routes that need a proven address, such as inviting members or approving releases, add the `requireVerifiedEmail` middleware after `requireAuth`. It returns `403 EMAIL_NOT_VERIFIED`.
 
 ### Organizations API
 
@@ -321,13 +408,7 @@ Base path: `/api/v1/organizations`. Every route requires authentication.
 | `GET /` | any user | The caller's organizations, with their role in each |
 | `GET /:orgId` | member | Organization details and the caller's role |
 | `PATCH /:orgId` | `OWNER`, `ADMIN` | `{ name }`. Renames the organization. The slug can't be changed |
-| `GET /:orgId/members` | member | Members, with their roles and join dates. See the Members API below |
-
-**Access rules:** routes under `/:orgId` use `requireOrgRole(...roles)` after `requireAuth`.
-
-- **Not a member:** `404 Organization not found`. This is the same response as an organization that doesn't exist, so IDs can't be probed.
-- **Member without the required role:** `403 FORBIDDEN`.
-- Membership is checked on every request, so removing a member takes effect immediately.
+| `GET /:orgId/members` | member | Members, with their roles and join dates |
 
 ### Members API
 
@@ -339,19 +420,10 @@ Base path: `/api/v1/organizations/:orgId/members`. Every route requires authenti
 | `PATCH /:memberId` | `OWNER` | `{ role }` (`OWNER`, `ADMIN` or `MEMBER`). Returns `{ member }` |
 | `DELETE /:memberId` | see below | Removes a member. Use your own member `id` to leave |
 
-**Who can remove whom**
 - Anyone can remove **themselves** (leave).
 - An `OWNER` can remove anyone.
 - An `ADMIN` can remove `MEMBER`s only.
-- A `MEMBER` can't remove anyone else.
-
-**Last-owner protection:** demoting, removing or leaving as the organization's last `OWNER` returns `409 LAST_OWNER`. Make someone else an owner first.
-
-The check runs in a transaction that locks every owner row and re-reads the caller's role, so two owners stepping down at once can never leave zero owners, and an owner demoted mid-request can't finish an owner-only action.
-
-**Errors:**
-- Unknown member, or one from another organization: `404 Member not found`.
-- Not allowed: `403 FORBIDDEN`.
+- Demoting, removing, or leaving as the organization's last `OWNER` returns `409 LAST_OWNER`.
 
 ### Projects and Environments API
 
@@ -366,23 +438,33 @@ Base path: `/api/v1/organizations/:orgId/projects`. Every route requires authent
 | `POST /:projectSlug/environments` | `OWNER`, `ADMIN` | `{ environment: Environment }` (201). Body: `{ name, url }` |
 | `PATCH /:projectSlug/environments/:environmentId` | `OWNER`, `ADMIN` | `{ environment: Environment }`. Body: `{ name?, url? }` |
 
-- **Response shapes:**
-  - `ProjectSummary`: `id`, `name`, `slug`, `description`, `createdAt`, `updatedAt`.
-  - `Environment`: `id`, `name`, `slug`, `url`, `createdAt`, `updatedAt`.
-- **Validation:**
-  - Project names: 2–180 characters. Descriptions: up to 2,000.
-  - Environment names: 2–100 characters.
-  - URLs: `http`/`https` only, up to 2,048 characters, with no username or password. `localhost` and LAN addresses are allowed.
-  - An update must include at least one field. Omitted fields are unchanged, and `description: null` (or a blank description) clears it.
-- **Slugs:**
-  - Generated from the name and never changed. A slug sent in a request body is ignored.
-  - Unique per organization (projects) or per project (environments). A taken slug gets a short suffix, e.g. `acme-website-3f9a2c`.
-  - `new`, `settings` and `environments` are never used as project slugs.
-- **Environment names** are unique per project, ignoring case. A clash returns `409 ENVIRONMENT_NAME_TAKEN`.
-- **Access:**
-  - Not an organization member: `404`.
-  - A `MEMBER` trying to write: `403`.
-  - A project slug or environment ID from another organization or project: `404 Project not found` / `404 Environment not found`.
+### Review Rounds API
+
+Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/review-rounds`. Every route requires authentication and organization membership.
+
+| Endpoint | Role | Description |
+|---|---|---|
+| `POST /` | `OWNER`, `ADMIN` | Create review round. Body: `{ environmentId, title, instructions?, checklist? }` |
+| `GET /` | member | List review rounds for project. Filterable with `?status=OPEN` or `CLOSED` |
+| `POST /:roundId/guest-links` | `OWNER`, `ADMIN` | Generate a guest review link. Body: `{ label?, expiresAt? }`. Returns the secret link token (only returned once) |
+| `DELETE /:roundId/guest-links/:linkId` | `OWNER`, `ADMIN` | Revoke a guest access link |
+
+### Guest Reviews API
+
+Base path: `/api/v1/guest`. Public endpoints for invited reviewers.
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /reviews/exchange` | none (rate-limited) | `{ token }`. Validates the guest invitation secret, checks review round status and origin match, and returns a single-use handoff code and staging target URL |
+
+### Feedback Widget API
+
+Base path: `/api/v1/widget`. CORS-enabled endpoints called by the embedded feedback widget on review websites.
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /sessions/exchange` | none (rate-limited) | `{ handoffCode }`. Consumes the single-use handoff code and returns a 4-hour Bearer session token (`sessionToken`) |
+| `POST /issues` | Bearer session token | Submit contextual feedback issue from staging website. Body: `{ title, description?, type?, priority?, pageUrl, selector?, viewport?, scrollPosition?, clientMutationId? }` |
 
 ### Issues API
 
@@ -390,7 +472,7 @@ Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every ro
 
 | Endpoint | Role | Returns | Description |
 |---|---|---|---|
-| `POST /` | member (verified email) | `{ issue: IssueDetail }` (201) | Create issue. Body: `{ title, description?, type?, priority?, assigneeId?, environmentId? }` |
+| `POST /` | member (verified email) | `{ issue: IssueDetail }` (201) | Create issue from dashboard. Body: `{ title, description?, type?, priority?, assigneeId?, environmentId? }` |
 | `GET /` | member | `{ issues: IssueSummary[], pagination, counts }` (200) | Paginated list, filtered search, and status counts |
 | `GET /:number` | member | `{ issue: IssueDetail }` (200) | Single issue detail by sequential number |
 | `PATCH /:number` | member | `{ issue: IssueDetail }` (200) | Update issue. Body: `{ title?, description?, type?, priority?, status?, assigneeId?, environmentId? }` |
@@ -399,57 +481,21 @@ Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every ro
 - **Issue Types:** `BUG` (default), `DESIGN`, `CONTENT`, `SUGGESTION`.
 - **Issue Priorities:** `LOW`, `MEDIUM` (default), `HIGH`, `CRITICAL`.
 - **Issue Statuses:** `NEW` (default on create), `IN_PROGRESS`, `READY_FOR_VERIFICATION`, `CLOSED`.
-- **Issue Sources:** `DASHBOARD` (default on create), `WIDGET`.
-- **Sequential Issue Numbering:**
-  - Starts at 1 for each project and strictly increments atomically on creation.
-  - Safe against race conditions under concurrent creation.
-  - Issue numbers are permanent and **never reused after deletion**.
-- **Issue Creation:**
-  - Requires a verified email address (`requireVerifiedEmail`). Unverified users receive `403 EMAIL_NOT_VERIFIED`.
-  - Strictly validated: forged fields (`status`, `source`, `number`, `reporterId`) and unsupported properties are rejected with `400 VALIDATION_ERROR`.
-- **Assignee Reference:**
-  - `assigneeId` references an `OrganizationMember` in the current organization (retrieved from the Members API).
-  - Assignees from other organizations are rejected with `400 BAD_REQUEST`.
-  - When an organization member is removed, their issue assignments are automatically cleared to `null` (`onDelete: SetNull`).
-  - Response objects populate `assignee` with `{ id, name, email }` through the related user.
-- **Environment Reference:**
-  - `environmentId` references an `Environment` in the current project. Environments from other projects or organizations are rejected with `400 BAD_REQUEST`.
-- **Listing & Status Counts (`GET /`):**
-  - **Pagination:** stable number-descending (`number: "desc"`), parameterized with `page` (default 1) and `limit` (default 20, max 100).
-  - **Filters:**
-    - `status`: filter by status (`NEW`, `IN_PROGRESS`, `READY_FOR_VERIFICATION`, `CLOSED`).
-    - `type`: filter by type (`BUG`, `DESIGN`, `CONTENT`, `SUGGESTION`).
-    - `priority`: filter by priority (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
-    - `assigneeId`:
-      - `me`: issues assigned to the authenticated caller's organization membership.
-      - `unassigned`: issues with no assignee.
-      - `<uuid>`: issues assigned to a specific organization member ID.
-    - `environmentId`: filter by environment UUID.
-    - `search`: case-insensitive keyword substring search on `title`.
-  - **Status Counts:**
-    - The `counts` response object provides `{ all, NEW, IN_PROGRESS, READY_FOR_VERIFICATION, CLOSED }`.
-    - Computes counts respecting all active filters (`assigneeId`, `type`, `priority`, `environmentId`, `search`) **except `status`**, keeping status tab badges consistent when selecting a tab.
-- **Updates (`PATCH /:number`):**
-  - All organization members (`OWNER`, `ADMIN`, `MEMBER`) can update issues.
-  - Requires at least one field. Unknown or forged fields are rejected with `400 VALIDATION_ERROR`.
-  - Setting `assigneeId: null` unassigns the issue.
-  - Setting `environmentId: null` unlinks the environment.
-  - Setting `description: null` or `""` clears the description.
-- **Deletions (`DELETE /:number`):**
-  - Restricted to `OWNER` and `ADMIN`. Regular `MEMBER` receives `403 FORBIDDEN`.
+- **Issue Sources:** `DASHBOARD` (dashboard submission), `WIDGET` (embedded widget submission).
+- **Guest Attribution:** Issues created via the widget have `source: WIDGET`, `reporterId: null`, and record `guestName`, `guestEmail`, `guestLinkId`, `reviewRoundId`, `pageUrl`, and `context` (element selector, viewport, and scroll information).
+- **Sequential Issue Numbering:** Atomic increment starting at 1 per project. Permanent and never reused after deletion.
+- **Listing & Status Counts:** Number-descending pagination (`page`, `limit`), filtered by `status`, `type`, `priority`, `assigneeId` (`me`, `unassigned`, or UUID), `environmentId`, and substring `search`.
 
 ### Invitations API
 
-**Organization side:** `/api/v1/organizations/:orgId/invitations`, for OWNER and ADMIN only.
+**Organization side:** `/api/v1/organizations/:orgId/invitations`, for `OWNER` and `ADMIN` only.
 
 | Endpoint | Description |
 |---|---|
-| `POST /` | `{ email, role? }`. `role` is `ADMIN` or `MEMBER` (default `MEMBER`). Emails an invite link valid for 7 days. The inviter needs a **verified email**. Returns `{ invitation }` (201) |
+| `POST /` | `{ email, role? }`. `role` is `ADMIN` or `MEMBER` (default `MEMBER`). Emails an invite link valid for 7 days. Inviter needs a verified email |
 | `GET /` | Open invites (`pending` or `expired`), newest first |
 | `POST /:invitationId/resend` | New link and new 7-day expiry. The old link stops working. Limited to 3 per invite per hour |
-| `DELETE /:invitationId` | Revokes the invite. The row is kept as history |
-
-`Invitation`: `id`, `email`, `role`, `status` (`pending` · `expired` · `accepted` · `revoked`), `invitedBy { id, name } | null`, `expiresAt`, `createdAt`.
+| `DELETE /:invitationId` | Revokes the invite. Row kept as history |
 
 **Invite link side:** `/api/v1/invitations`
 
@@ -458,71 +504,33 @@ Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every ro
 | `GET /:token` | none | Preview for the invite page: `{ organization { name, slug }, email, role, invitedBy { name } | null, expiresAt }` |
 | `POST /accept` | access | `{ token }`. Joins the organization and returns `{ organization { id, name, slug, role } }`. Safe to repeat |
 
-The email links to `${APP_URL}/invite?token=…`, and that page must send `Referrer-Policy: no-referrer`.
-
-**Rules**
-- **Invites can't grant `OWNER`.** An existing OWNER promotes people after they join.
-- **A link only works for the email it was sent to.** Accepting with another account returns `403 INVITATION_EMAIL_MISMATCH`.
-- **Accepting marks the email as verified,** because opening the link proves ownership. An existing membership keeps its current role.
-- **One pending invite per email per organization,** enforced with a per-email database lock, so simultaneous invites can't create duplicates.
-
-**Errors**
-
-| Code | Status | When |
-|---|---|---|
-| `ALREADY_MEMBER` | 409 | The person is already in the organization |
-| `INVITATION_PENDING` | 409 | An invite is already pending. `details.invitationId` says which; resend it |
-| `INVITATION_INVALID` | 404 | Unknown, revoked or already-used link |
-| `INVITATION_EXPIRED` | 410 | Expired link |
-| `INVITATION_EMAIL_MISMATCH` | 403 | Logged in as a different email than the one invited |
-
-**Rate limits:** invites are capped at 30 per organization per hour and 10 per inviter per hour. Preview and accept are limited per IP.
-
-When an access token expires, protected routes return `401 ACCESS_TOKEN_EXPIRED`. The client should then call `/refresh` and retry. Non-browser clients may send the access token as `Authorization: Bearer <token>`.
-
-Passwords are hashed with argon2id. Login and signup are rate-limited per IP, and failed logins are also limited per account (5 per 15 minutes).
-
 ## Development Status
 
 **Completed**
-- pnpm monorepo initialization.
-- Next.js frontend scaffold.
-- Express.js backend scaffold.
-- Shared TypeScript and Zod package.
-- Root development and build scripts.
+- pnpm monorepo architecture and workspaces configuration.
+- Next.js frontend with Tailwind CSS 4, authenticated dashboard, and review UI.
+- Express.js backend with ES modules, validated environment config, security headers, and credentialed CORS.
+- Shared TypeScript and Zod package (`@pinforth/shared`).
+- Embeddable feedback widget (`@pinforth/widget`) with element selector, viewport, and scroll capture.
 - PostgreSQL 17 local development environment using Docker Compose.
-- Prisma ORM 7 integration with PostgreSQL.
-- Initial database models:
-  - User
-  - Organization
-  - OrganizationMember
-  - Project
-  - Environment
-- Initial Prisma database migration.
-- Prisma Client integration using the PostgreSQL driver adapter.
-- Database connectivity verification script.
-- API foundation: validated environment config, central JSON error handling, security headers, credentialed CORS and origin checks.
-- Authentication data model: password hash, email verification, rotating refresh sessions and single-use verification tokens.
-- API test setup with an isolated test database.
-- Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, current user, rate limiting.
-- Password reset by email, with Mailpit for local email.
-- Email verification, and the `requireVerifiedEmail` guard for sensitive actions.
-- Organizations: create, list, view, rename, list members, with role-based access and tenant isolation.
-- Projects and website environments: create, list, view, update, with generated slugs and per-organization isolation.
-- Member management: change roles, remove members, leave, with last-owner protection.
-- Organization invitations by email: invite, resend, revoke, preview and accept.
-- Basic Issues API: sequential concurrency-safe numbering, role-based access, strict tenant isolation, filtering, assigned-to-me support, and status tab counts.
+- Prisma ORM 7 integration with PostgreSQL adapter and versioned migrations.
+- Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, password reset by email, email verification, and rate limiting.
+- Organizations & team management: create, rename, list members, role promotion, member removal, and last-owner protection.
+- Projects & website environments: create, list, view, update, with generated slugs and environment URL configuration.
+- Review rounds: creation linked to website environments, open/closed status tracking.
+- Scoped guest review access: secret token generation, URL fragment transmission, single-use handoffs, and short-lived widget sessions.
+- Issue management: concurrency-safe sequential issue numbering, role-based access, filtering, assigned-to-me support, status tab counts, and guest attribution.
+- Full test suite: Next.js unit tests (`pnpm test:web`), feedback widget tests (`pnpm test:widget`), and API integration tests against an isolated PostgreSQL database (`pnpm test:api`).
+- Automated CI pipeline: GitHub Actions workflow (`.github/workflows/ci.yml`) validating linting, types, unit/DOM tests, Prisma schema, migration deployment, API tests, and monorepo build on every PR to `main`.
 
 **Upcoming**
-- Guest reviewer access for review rounds.
-- Project management APIs.
-- Deployment version tracking.
-- Embeddable website feedback SDK.
-- Issue tracking and collaboration.
-- Fix verification and client approval workflows.
-- AI-assisted feedback processing.
-
-The current repository provides the application foundation. Core product features are under development.
+- Deployment version tracking & release candidate linking.
+- Developer fix submission linked to specific deployments.
+- Independent QA verification and issue reopening workflows.
+- Release readiness assessment & blocker tracking.
+- Scoped client release sign-off & auditable approval records.
+- AI-assisted feedback clarification, reproduction steps, and duplicate detection.
+- Developer coding agent integration via Model Context Protocol (MCP).
 
 ## Collaboration Workflow
 
@@ -532,18 +540,18 @@ Our workflow follows a feature-branch approach:
 
 1. Create a branch from the latest `main`.
 2. Implement a focused feature or improvement.
-3. Commit and push changes.
-4. Open a Pull Request.
-5. Request a teammate review.
-6. Merge after successful review and verification.
+3. Validate locally (`lint`, `typecheck`, `test`, `build`).
+4. Commit and push changes.
+5. Open a Pull Request referencing the relevant issue.
+6. Verify automated GitHub Actions CI passes.
+7. Merge after successful review and verification.
 
 Branch naming examples:
 
-- `feat/authentication`
-- `feat/project-dashboard`
+- `feat/review-rounds`
 - `feat/feedback-widget`
 - `fix/issue-validation`
-- `chore/monorepo-scaffold`
+- `chore/github-actions-ci`
 
 Direct development commits to `main` are discouraged.
 
@@ -551,7 +559,7 @@ Direct development commits to `main` are discouraged.
 
 Do not commit environment secrets, credentials, API keys, or sensitive client data.
 
-Use environment example files for documenting required configuration. Authentication, authorization, tenant isolation, secure review links, and privacy safeguards will be implemented as the application develops.
+Use environment example files for documenting required configuration. Secret tokens (such as guest invitation tokens, handoff codes, and widget session tokens) are stored exclusively as SHA-256 hashes and transferred over URL fragments or Authorization headers to prevent logging.
 
 ## Project Goal
 
