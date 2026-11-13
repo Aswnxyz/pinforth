@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pinforth_ci
+          POSTGRES_PASSWORD: pinforth_ci_password
+          POSTGRES_DB: pinforth_ci_base
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://pinforth_ci:pinforth_ci_password@localhost:5432/pinforth_ci_base?schema=public
+      TEST_DATABASE_URL: postgresql://pinforth_ci:pinforth_ci_password@localhost:5432/pinforth_ci_test?schema=public
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint web application
+        run: pnpm lint:web
+
+      - name: Type-check shared package
+        run: pnpm typecheck:shared
+
+      - name: Type-check widget package
+        run: pnpm --filter @pinforth/widget typecheck
+
+      - name: Run web tests
+        run: pnpm test:web
+
+      - name: Run widget tests
+        run: pnpm test:widget
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @pinforth/api exec prisma validate
+
+      - name: Run API tests
+        run: pnpm test:api
+
+      - name: Build monorepo
+        run: pnpm build
