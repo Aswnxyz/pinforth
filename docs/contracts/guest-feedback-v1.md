@@ -274,6 +274,63 @@ Immediately invalidates a guest link and terminates any active sessions establis
 
 ---
 
+### 3.5 List Guest Access Links for an Environment
+
+Lists every guest access link across all review rounds belonging to a project environment. This lets organization members see who currently has review access to a website, and lets `OWNER` / `ADMIN` members revoke a link through the existing Delete endpoint using `reviewRoundId`.
+
+- **Method / Path:** `GET /api/v1/organizations/:orgId/projects/:projectSlug/environments/:environmentId/guest-links`
+- **Auth:** Required (Any member: `OWNER`, `ADMIN`, `MEMBER`).
+- **Tenant scoping:** The organization, project and environment must all belong to the caller's tenant hierarchy. A missing resource, a project from another organization, or an environment from another project all return the same `404 NOT_FOUND` response, so resource existence is never disclosed across tenants.
+- **Ordering:** Newest links first by `createdAt` (descending).
+- **Pagination:** None. All matching links are returned so the reviewer list is never incomplete.
+- **Empty environment:** Returns `200 OK` with `guestLinks: []`.
+
+#### Response `200 OK`
+```json
+{
+  "success": true,
+  "data": {
+    "guestLinks": [
+      {
+        "id": "a9082006-bb21-4f11-9a70-3847c203b8e2",
+        "reviewRoundId": "e6745ba6-df11-4770-9831-a8cfd6f83b10",
+        "reviewerName": "Alice",
+        "reviewerEmail": null,
+        "status": "ACTIVE",
+        "expiresAt": "2026-11-19T14:30:00.000Z",
+        "revokedAt": null,
+        "createdAt": "2026-11-12T14:30:00.000Z",
+        "lastOpenedAt": "2026-11-14T12:30:00.000Z",
+        "issuesCount": 3
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID string | Guest access link ID. |
+| `reviewRoundId` | UUID string | Review round that owns the link. Required by the Delete endpoint. |
+| `reviewerName` | string \| null | Optional reviewer display name. |
+| `reviewerEmail` | string \| null | Optional reviewer email. |
+| `status` | string | Server-derived status: `REVOKED`, `EXPIRED`, or `ACTIVE` (see below). |
+| `expiresAt` | ISO datetime | Link expiration time. |
+| `revokedAt` | ISO datetime \| null | Revocation time, if revoked. |
+| `createdAt` | ISO datetime | Link creation time. |
+| `lastOpenedAt` | ISO datetime \| null | Latest `GuestSession.createdAt` for the link, or `null` if no guest session has been established. Never uses `updatedAt`. |
+| `issuesCount` | integer | Number of issues submitted through this guest link. |
+
+Status is derived at request time using a single server clock value, with revocation taking precedence over expiration:
+
+1. `revokedAt` is not null → `REVOKED`.
+2. Otherwise, `expiresAt <= now` → `EXPIRED`.
+3. Otherwise → `ACTIVE`.
+
+The response never includes secrets: no `tokenHash`, no session token hashes, no handoff `codeHash`, and no raw invitation or session tokens. Guest session and handoff records are never serialized.
+
+---
+
 ## 4. Guest Review Access API
 
 Public endpoint used by the Pinforth frontend when the guest lands on the invitation URL.

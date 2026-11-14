@@ -1,3 +1,4 @@
+import { randomBytes, randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import app from "../src/app.js";
@@ -244,6 +245,449 @@ describe("Milestone 2A — Guest Review and Widget Feedback API", () => {
           },
         });
       expect(issueRes.status).toBe(401);
+    });
+
+    describe("Environment guest link listing", () => {
+      const envLinksPath = (orgId, projectSlug, environmentId) =>
+        `/organizations/${orgId}/projects/${projectSlug}/environments/${environmentId}/guest-links`;
+
+      const listLinks = (as, orgId, project, environmentId) =>
+        as("get", envLinksPath(orgId, project.slug, environmentId)).send();
+
+      async function createRound(owner, orgId, project, environment, name) {
+        const res = await owner
+          .as("post", `/organizations/${orgId}/projects/${project.slug}/review-rounds`)
+          .send({ name, environmentId: environment.id });
+        expect(res.status).toBe(201);
+        return res.body.data.reviewRound;
+      }
+
+      async function createRoundLink(owner, orgId, project, round, body = {}) {
+        const res = await owner
+          .as("post", `/organizations/${orgId}/projects/${project.slug}/review-rounds/${round.id}/guest-links`)
+          .send(body);
+        expect(res.status).toBe(201);
+        return res.body.data;
+      }
+
+      async function revokeLink(owner, orgId, project, link) {
+        return owner
+          .as(
+            "delete",
+            `/organizations/${orgId}/projects/${project.slug}/review-rounds/${link.reviewRoundId}/guest-links/${link.id}`
+          )
+          .send();
+      }
+
+      async function createProject(owner, orgId, name) {
+        const res = await owner.as("post", `/organizations/${orgId}/projects`).send({ name });
+        expect(res.status).toBe(201);
+        return res.body.data.project;
+      }
+
+      async function createEnvironment(owner, orgId, project, name, url) {
+        const res = await owner
+          .as("post", `/organizations/${orgId}/projects/${project.slug}/environments`)
+          .send({ name, url });
+        expect(res.status).toBe(201);
+        return res.body.data.environment;
+      }
+
+      async function widgetSessionToken(guestToken) {
+        const guestRes = await request(app)
+          .post("/api/v1/guest/reviews/exchange")
+          .set("Origin", WEB_ORIGIN)
+          .send({ token: guestToken });
+        expect(guestRes.status).toBe(200);
+
+        const widgetRes = await request(app)
+          .post("/api/v1/widget/sessions/exchange")
+          .set("Origin", "https://staging.acme.com")
+          .send({ handoffCode: guestRes.body.data.handoffCode });
+        expect(widgetRes.status).toBe(200);
+        return widgetRes.body.data.sessionToken;
+      }
+
+      async function submitWidgetIssue(sessionToken, title) {
+        const res = await request(app)
+          .post("/api/v1/widget/issues")
+          .set("Authorization", `Bearer ${sessionToken}`)
+          .set("Origin", "https://staging.acme.com")
+          .send({
+            title,
+            pageUrl: "https://staging.acme.com/guest-listing",
+            context: { viewport: { width: 1024, height: 768 } },
+          });
+        expect(res.status).toBe(201);
+        return res.body.data.issue;
+      }
+
+      async function createGuestSession(guestLinkId, createdAt) {
+        await prisma.guestSession.create({
+          data: {
+            guestLinkId,
+            tokenHash: randomBytes(32).toString("hex"),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            createdAt,
+          },
+        });
+      }
+
+      it("allows OWNER, ADMIN and MEMBER to list links and rejects unauthenticated requests", async () => {
+        const { owner, admin, member, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Roles Round");
+        const { guestLink } = await createRoundLink(owner, orgId, project, round, {
+          reviewerName: "Alice",
+        });
+
+        for (const user of [owner, admin, member]) {
+          const res = await listLinks(user.as, orgId, project, environment.id);
+          expect(res.status).toBe(200);
+          expect(res.body.data.guestLinks).toHaveLength(1);
+          expect(res.body.data.guestLinks[0].id).toBe(guestLink.id);
+        }
+
+        const anonymous = await request(app)
+          .get(`/api/v1${envLinksPath(orgId, project.slug, environment.id)}`)
+          .set("Origin", WEB_ORIGIN);
+        expect(anonymous.status).toBe(401);
+      });
+
+      it("returns 404 for missing and cross-tenant resources without disclosing existence", async () => {
+        const workspace = await setupTestWorkspace();
+        const { owner, orgId, project, environment, rivalOrgId, rivalProject, rivalEnvironment } = workspace;
+
+        // Seed a real link so a leak would show up as a 200 rather than an empty list.
+        const round = await createRound(owner, orgId, project, environment, "Tenant Round");
+        await createRoundLink(owner, orgId, project, round);
+
+        const missingOrg = await owner
+          .as("get", envLinksPath(randomUUID(), project.slug, environment.id))
+          .send();
+        expect(missingOrg.status).toBe(404);
+        expect(missingOrg.body.message).toMatch(/Organization not found/);
+
+        const missingProject = await owner
+          .as("get", envLinksPath(orgId, "missing-project", environment.id))
+          .send();
+        expect(missingProject.status).toBe(404);
+        expect(missingProject.body.message).toMatch(/Project not found/);
+
+        const missingEnvironment = await listLinks(owner.as, orgId, project, randomUUID());
+        expect(missingEnvironment.status).toBe(404);
+
+        const secondProject = await createProject(owner, orgId, "Second Portal");
+        const secondProjectEnvironment = await createEnvironment(
+          owner,
+          orgId,
+          secondProject,
+          "Preview",
+          "https://preview.acme.com"
+        );
+        const foreignEnvironment = await listLinks(owner.as, orgId, project, secondProjectEnvironment.id);
+        expect(foreignEnvironment.status).toBe(404);
+
+        const rivalOrgEnvironment = await listLinks(owner.as, orgId, project, rivalEnvironment.id);
+        expect(rivalOrgEnvironment.status).toBe(404);
+
+        // Missing, other-project and cross-tenant environment responses are indistinguishable.
+        const missingEnvironmentBody = { status: missingEnvironment.status, body: missingEnvironment.body };
+        expect({ status: foreignEnvironment.status, body: foreignEnvironment.body }).toEqual(missingEnvironmentBody);
+        expect({ status: rivalOrgEnvironment.status, body: rivalOrgEnvironment.body }).toEqual(missingEnvironmentBody);
+
+        const rivalProjectSlug = await owner
+          .as("get", envLinksPath(orgId, rivalProject.slug, rivalEnvironment.id))
+          .send();
+        expect(rivalProjectSlug.status).toBe(404);
+        expect(rivalProjectSlug.body.message).toMatch(/Project not found/);
+
+        const rivalOrg = await owner
+          .as("get", envLinksPath(rivalOrgId, rivalProject.slug, rivalEnvironment.id))
+          .send();
+        expect(rivalOrg.status).toBe(404);
+        expect(rivalOrg.body.message).toMatch(/Organization not found/);
+      });
+
+      it("lists links from every round in the environment, excludes other environments and projects, and orders newest first", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+
+        const otherEnvironment = await createEnvironment(
+          owner,
+          orgId,
+          project,
+          "Preview",
+          "https://preview.acme.com"
+        );
+        const otherProject = await createProject(owner, orgId, "Other Portal");
+        const otherProjectEnvironment = await createEnvironment(
+          owner,
+          orgId,
+          otherProject,
+          "Staging",
+          "https://other.acme.com"
+        );
+        const emptyEnvironment = await createEnvironment(
+          owner,
+          orgId,
+          project,
+          "Empty",
+          "https://empty.acme.com"
+        );
+
+        const roundOne = await createRound(owner, orgId, project, environment, "Round One");
+        const roundTwo = await createRound(owner, orgId, project, environment, "Round Two");
+        const otherEnvironmentRound = await createRound(
+          owner,
+          orgId,
+          project,
+          otherEnvironment,
+          "Other Environment Round"
+        );
+        const otherProjectRound = await createRound(
+          owner,
+          orgId,
+          otherProject,
+          otherProjectEnvironment,
+          "Other Project Round"
+        );
+
+        const oldest = await createRoundLink(owner, orgId, project, roundOne, { reviewerName: "Oldest" });
+        const middle = await createRoundLink(owner, orgId, project, roundOne, { reviewerName: "Middle" });
+        const newest = await createRoundLink(owner, orgId, project, roundTwo, { reviewerName: "Newest" });
+        const otherEnvironmentLink = await createRoundLink(owner, orgId, project, otherEnvironmentRound, {
+          reviewerName: "Other environment",
+        });
+        const otherProjectLink = await createRoundLink(owner, orgId, otherProject, otherProjectRound, {
+          reviewerName: "Other project",
+        });
+
+        await prisma.guestAccessLink.update({
+          where: { id: oldest.guestLink.id },
+          data: { createdAt: new Date("2026-11-01T00:00:00.000Z") },
+        });
+        await prisma.guestAccessLink.update({
+          where: { id: middle.guestLink.id },
+          data: { createdAt: new Date("2026-11-02T00:00:00.000Z") },
+        });
+        await prisma.guestAccessLink.update({
+          where: { id: newest.guestLink.id },
+          data: { createdAt: new Date("2026-11-03T00:00:00.000Z") },
+        });
+        await prisma.guestAccessLink.update({
+          where: { id: otherEnvironmentLink.guestLink.id },
+          data: { createdAt: new Date("2026-11-04T00:00:00.000Z") },
+        });
+        await prisma.guestAccessLink.update({
+          where: { id: otherProjectLink.guestLink.id },
+          data: { createdAt: new Date("2026-11-05T00:00:00.000Z") },
+        });
+
+        const res = await listLinks(owner.as, orgId, project, environment.id);
+        expect(res.status).toBe(200);
+        expect(res.body.data.guestLinks.map((link) => link.id)).toEqual([
+          newest.guestLink.id,
+          middle.guestLink.id,
+          oldest.guestLink.id,
+        ]);
+        expect(res.body.data.guestLinks.map((link) => link.reviewRoundId)).toEqual([
+          roundTwo.id,
+          roundOne.id,
+          roundOne.id,
+        ]);
+
+        const otherEnvironmentRes = await listLinks(owner.as, orgId, project, otherEnvironment.id);
+        expect(otherEnvironmentRes.body.data.guestLinks.map((link) => link.id)).toEqual([
+          otherEnvironmentLink.guestLink.id,
+        ]);
+
+        const otherProjectRes = await listLinks(owner.as, orgId, otherProject, otherProjectEnvironment.id);
+        expect(otherProjectRes.body.data.guestLinks.map((link) => link.id)).toEqual([
+          otherProjectLink.guestLink.id,
+        ]);
+
+        const emptyRes = await listLinks(owner.as, orgId, project, emptyEnvironment.id);
+        expect(emptyRes.status).toBe(200);
+        expect(emptyRes.body.data.guestLinks).toEqual([]);
+      });
+
+      it("derives ACTIVE, EXPIRED and REVOKED statuses with revocation taking precedence", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Status Round");
+
+        const active = await createRoundLink(owner, orgId, project, round, { reviewerName: "Active" });
+        const expired = await createRoundLink(owner, orgId, project, round, { reviewerName: "Expired" });
+        const revoked = await createRoundLink(owner, orgId, project, round, { reviewerName: "Revoked" });
+        const revokedExpired = await createRoundLink(owner, orgId, project, round, {
+          reviewerName: "Revoked and expired",
+        });
+
+        const past = new Date(Date.now() - 60 * 60 * 1000);
+        await prisma.guestAccessLink.update({
+          where: { id: expired.guestLink.id },
+          data: { expiresAt: past },
+        });
+        await prisma.guestAccessLink.update({
+          where: { id: revokedExpired.guestLink.id },
+          data: { expiresAt: past },
+        });
+
+        expect((await revokeLink(owner, orgId, project, revoked.guestLink)).status).toBe(200);
+        expect((await revokeLink(owner, orgId, project, revokedExpired.guestLink)).status).toBe(200);
+
+        const res = await listLinks(owner.as, orgId, project, environment.id);
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries(res.body.data.guestLinks.map((link) => [link.id, link]));
+
+        expect(byId[active.guestLink.id].status).toBe("ACTIVE");
+        expect(byId[expired.guestLink.id].status).toBe("EXPIRED");
+        expect(byId[revoked.guestLink.id].status).toBe("REVOKED");
+        expect(byId[revokedExpired.guestLink.id].status).toBe("REVOKED");
+        expect(byId[expired.guestLink.id].revokedAt).toBeNull();
+        expect(byId[revokedExpired.guestLink.id].revokedAt).toEqual(expect.any(String));
+      });
+
+      it("reports the latest guest session creation time as lastOpenedAt", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Sessions Round");
+
+        const neverOpened = await createRoundLink(owner, orgId, project, round, { reviewerName: "Never" });
+        const onceOpened = await createRoundLink(owner, orgId, project, round, { reviewerName: "Once" });
+        const repeatedlyOpened = await createRoundLink(owner, orgId, project, round, {
+          reviewerName: "Repeated",
+        });
+
+        await createGuestSession(onceOpened.guestLink.id, new Date("2026-11-10T09:00:00.000Z"));
+        await createGuestSession(repeatedlyOpened.guestLink.id, new Date("2026-11-09T09:00:00.000Z"));
+        await createGuestSession(repeatedlyOpened.guestLink.id, new Date("2026-11-12T18:30:00.000Z"));
+        await createGuestSession(repeatedlyOpened.guestLink.id, new Date("2026-11-11T11:00:00.000Z"));
+
+        const res = await listLinks(owner.as, orgId, project, environment.id);
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries(res.body.data.guestLinks.map((link) => [link.id, link]));
+
+        expect(byId[neverOpened.guestLink.id].lastOpenedAt).toBeNull();
+        expect(byId[onceOpened.guestLink.id].lastOpenedAt).toBe("2026-11-10T09:00:00.000Z");
+        expect(byId[repeatedlyOpened.guestLink.id].lastOpenedAt).toBe("2026-11-12T18:30:00.000Z");
+      });
+
+      it("counts only issues submitted through each guest link", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Issue Count Round");
+
+        const first = await createRoundLink(owner, orgId, project, round, { reviewerName: "First" });
+        const second = await createRoundLink(owner, orgId, project, round, { reviewerName: "Second" });
+        const third = await createRoundLink(owner, orgId, project, round, { reviewerName: "Third" });
+
+        const firstSession = await widgetSessionToken(first.token);
+        const secondSession = await widgetSessionToken(second.token);
+
+        await submitWidgetIssue(firstSession, "First link issue one");
+        await submitWidgetIssue(firstSession, "First link issue two");
+        await submitWidgetIssue(secondSession, "Second link issue one");
+
+        const res = await listLinks(owner.as, orgId, project, environment.id);
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries(res.body.data.guestLinks.map((link) => [link.id, link]));
+
+        expect(byId[first.guestLink.id].issuesCount).toBe(2);
+        expect(byId[second.guestLink.id].issuesCount).toBe(1);
+        expect(byId[third.guestLink.id].issuesCount).toBe(0);
+      });
+
+      it("never exposes token hashes, handoff codes, raw tokens or nested session records", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Secrecy Round");
+        const created = await createRoundLink(owner, orgId, project, round, {
+          reviewerName: "Secret Keeper",
+          reviewerEmail: "secret@client.com",
+        });
+        await widgetSessionToken(created.token);
+
+        const res = await listLinks(owner.as, orgId, project, environment.id);
+        expect(res.status).toBe(200);
+        expect(res.body.data.guestLinks).toHaveLength(1);
+
+        const link = res.body.data.guestLinks[0];
+        expect(Object.keys(link).sort()).toEqual([
+          "createdAt",
+          "expiresAt",
+          "id",
+          "issuesCount",
+          "lastOpenedAt",
+          "reviewRoundId",
+          "reviewerEmail",
+          "reviewerName",
+          "revokedAt",
+          "status",
+        ]);
+
+        const raw = JSON.stringify(res.body);
+        expect(raw).not.toMatch(/tokenHash|codeHash|handoffCodes|"sessions"/);
+        expect(raw).not.toMatch(/pf_gr_|pf_ws_|pf_hc_/);
+        expect(raw).not.toContain(created.token);
+      });
+
+      it("keeps revocation idempotent and rejects existing sessions and new exchanges immediately", async () => {
+        const { owner, orgId, project, environment } = await setupTestWorkspace();
+        const round = await createRound(owner, orgId, project, environment, "Revocation Round");
+        const created = await createRoundLink(owner, orgId, project, round, { reviewerName: "Revoke Me" });
+
+        const sessionToken = await widgetSessionToken(created.token);
+        await submitWidgetIssue(sessionToken, "Issue before revocation");
+
+        // Get a valid handoff before revocation so the widget exchange is exercised afterwards.
+        const handoffRes = await request(app)
+          .post("/api/v1/guest/reviews/exchange")
+          .set("Origin", WEB_ORIGIN)
+          .send({ token: created.token });
+        expect(handoffRes.status).toBe(200);
+        const handoffCode = handoffRes.body.data.handoffCode;
+
+        const firstRevoke = await revokeLink(owner, orgId, project, created.guestLink);
+        expect(firstRevoke.status).toBe(200);
+        expect(firstRevoke.body.data).toEqual({ revoked: true, id: created.guestLink.id });
+
+        const secondRevoke = await revokeLink(owner, orgId, project, created.guestLink);
+        expect(secondRevoke.status).toBe(200);
+        expect(secondRevoke.body.data).toEqual({ revoked: true, id: created.guestLink.id });
+
+        // An already-established widget session no longer authorizes issue submission.
+        const blockedIssue = await request(app)
+          .post("/api/v1/widget/issues")
+          .set("Authorization", `Bearer ${sessionToken}`)
+          .set("Origin", "https://staging.acme.com")
+          .send({
+            title: "Issue after revocation",
+            pageUrl: "https://staging.acme.com/guest-listing",
+            context: { viewport: { width: 1024, height: 768 } },
+          });
+        expect(blockedIssue.status).toBe(401);
+        expect(blockedIssue.body.message).toMatch(/revoked/i);
+
+        // New invitation exchanges reject the revoked link.
+        const revokedExchange = await request(app)
+          .post("/api/v1/guest/reviews/exchange")
+          .set("Origin", WEB_ORIGIN)
+          .send({ token: created.token });
+        expect(revokedExchange.status).toBe(401);
+        expect(revokedExchange.body.message).toMatch(/revoked/i);
+
+        // A handoff issued before revocation cannot open a new widget session.
+        const revokedHandoff = await request(app)
+          .post("/api/v1/widget/sessions/exchange")
+          .set("Origin", "https://staging.acme.com")
+          .send({ handoffCode });
+        expect(revokedHandoff.status).toBe(401);
+        expect(revokedHandoff.body.message).toMatch(/revoked/i);
+
+        // Sessions under the revoked link are terminated in the database as well.
+        const sessions = await prisma.guestSession.findMany({
+          where: { guestLinkId: created.guestLink.id },
+          select: { revokedAt: true },
+        });
+        expect(sessions.length).toBeGreaterThan(0);
+        expect(sessions.every((session) => session.revokedAt !== null)).toBe(true);
+      });
     });
   });
 
