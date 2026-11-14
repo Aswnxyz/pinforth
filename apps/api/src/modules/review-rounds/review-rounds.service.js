@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { badRequest, notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { hashToken } from "../auth/tokens.js";
+import { environmentIdParam } from "../projects/projects.schemas.js";
 
 const environmentSelect = {
   id: true,
@@ -144,6 +145,55 @@ export async function createGuestLink(projectId, roundId, userId, input) {
     token: rawToken,
     invitationUrl,
   };
+}
+
+// All links across every review round in one environment. The environment is
+// scoped to the project so an ID from another project or tenant is a 404.
+export async function listEnvironmentGuestLinks(projectId, environmentId) {
+  const parsedId = environmentIdParam.safeParse(environmentId);
+  if (!parsedId.success) throw notFound("Environment not found");
+
+  const environment = await prisma.environment.findFirst({
+    where: { id: parsedId.data, projectId },
+    select: { id: true },
+  });
+
+  if (!environment) throw notFound("Environment not found");
+
+  const now = new Date();
+
+  const links = await prisma.guestAccessLink.findMany({
+    where: { reviewRound: { environmentId: environment.id, projectId } },
+    select: {
+      id: true,
+      reviewRoundId: true,
+      reviewerName: true,
+      reviewerEmail: true,
+      expiresAt: true,
+      revokedAt: true,
+      createdAt: true,
+      sessions: {
+        select: { createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      _count: { select: { issues: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return links.map((link) => ({
+    id: link.id,
+    reviewRoundId: link.reviewRoundId,
+    reviewerName: link.reviewerName,
+    reviewerEmail: link.reviewerEmail,
+    status: link.revokedAt ? "REVOKED" : link.expiresAt <= now ? "EXPIRED" : "ACTIVE",
+    expiresAt: link.expiresAt.toISOString(),
+    revokedAt: link.revokedAt ? link.revokedAt.toISOString() : null,
+    createdAt: link.createdAt.toISOString(),
+    lastOpenedAt: link.sessions[0] ? link.sessions[0].createdAt.toISOString() : null,
+    issuesCount: link._count.issues,
+  }));
 }
 
 export async function revokeGuestLink(projectId, roundId, linkId) {

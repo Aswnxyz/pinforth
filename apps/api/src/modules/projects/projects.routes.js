@@ -3,6 +3,7 @@ import { getMembership, requireMembershipRole } from "../../middleware/require-o
 import { getProject, requireProject } from "../../middleware/require-project.js";
 import issueRoutes from "../issues/issues.routes.js";
 import reviewRoundRoutes from "../review-rounds/review-rounds.routes.js";
+import { listEnvironmentGuestLinks } from "../review-rounds/review-rounds.service.js";
 import {
   createEnvironmentSchema,
   createProjectSchema,
@@ -63,6 +64,12 @@ router.patch("/:projectSlug/environments/:environmentId", requireProject, canMan
   const environment = await updateEnvironment(getProject(req).id, req.params.environmentId, input);
 
   res.status(200).json({ success: true, data: { environment } });
+});
+
+router.get("/:projectSlug/environments/:environmentId/guest-links", requireProject, async (req, res) => {
+  const guestLinks = await listEnvironmentGuestLinks(getProject(req).id, req.params.environmentId);
+
+  res.status(200).json({ success: true, data: { guestLinks } });
 });
 
 router.use("/:projectSlug/issues", requireProject, issueRoutes);
