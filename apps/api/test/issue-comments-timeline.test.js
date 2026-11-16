@@ -1,5 +1,5 @@
 import request from "supertest";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import app from "../src/app.js";
 import { waitForPendingMail } from "../src/lib/mailer.js";
 import { prisma } from "../src/lib/prisma.js";
@@ -67,6 +67,10 @@ async function setupTeam() {
   const issuesPath = `/organizations/${orgId}/projects/${project.slug}/issues`;
   const otherIssuesPath = `/organizations/${otherOrgId}/projects/${otherProject.slug}/issues`;
 
+  const otherMember = await prisma.organizationMember.findUniqueOrThrow({
+    where: { organizationId_userId: { organizationId: otherOrgId, userId: outsider.userId } },
+  });
+
   return {
     owner,
     admin,
@@ -81,6 +85,7 @@ async function setupTeam() {
     adminMember,
     regularMember,
     unverifiedMember,
+    otherMember,
     issuesPath,
     otherIssuesPath,
   };
@@ -128,6 +133,10 @@ async function dropFailingActivityTrigger() {
 beforeEach(resetDatabase);
 
 afterEach(dropFailingActivityTrigger);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -221,6 +230,51 @@ describe("Issue activity recording", () => {
     expect(activities[1].newValue).toBeNull();
     expect(activities[2].oldValue).toBeNull();
     expect(activities[2].newValue).toMatchObject({ id: t.adminMember.id, name: "admin" });
+  });
+
+  it("validates the assignee inside the update transaction, not before it", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+
+    // The pre-transaction client must not be used for assignee lookup.
+    const outsideLookup = vi.spyOn(prisma.organizationMember, "findFirst");
+
+    const res = await t.owner
+      .as("patch", `${t.issuesPath}/${issue.number}`)
+      .send({ assigneeId: t.regularMember.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.issue.assignee.id).toBe(t.regularMember.id);
+    expect(outsideLookup).not.toHaveBeenCalled();
+    outsideLookup.mockRestore();
+
+    const activity = await prisma.issueActivity.findFirstOrThrow({
+      where: { issueId: issue.id, type: "ASSIGNEE_CHANGED" },
+    });
+    expect(activity.newValue).toMatchObject({ id: t.regularMember.id, name: "member" });
+  });
+
+  it("rejects an invalid assignee without a partial issue update or activity row", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+
+    const res = await t.owner.as("patch", `${t.issuesPath}/${issue.number}`).send({
+      assigneeId: t.otherMember.id,
+      status: "IN_PROGRESS",
+    });
+    expect(res.status).toBe(400);
+
+    const stored = await prisma.issue.findUniqueOrThrow({
+      where: { id: issue.id },
+      select: { status: true, assigneeId: true },
+    });
+    expect(stored).toEqual({ status: "NEW", assigneeId: null });
+
+    const activities = await prisma.issueActivity.findMany({
+      where: { issueId: issue.id },
+      select: { type: true },
+    });
+    expect(activities.map((a) => a.type)).toEqual(["ISSUE_CREATED"]);
   });
 
   it("records description changes without storing full text", async () => {
@@ -654,7 +708,8 @@ describe("GET issue timeline", () => {
     await prisma.issueComment.deleteMany({ where: { issueId: issue.id } });
 
     const sameTime = new Date("2026-11-16T11:00:00.000Z");
-    const createdIds = [];
+    const activityIds = [];
+    const commentIds = [];
     for (let i = 0; i < 2; i += 1) {
       const comment = await prisma.issueComment.create({
         data: {
@@ -674,10 +729,13 @@ describe("GET issue timeline", () => {
           createdAt: sameTime,
         },
       });
-      createdIds.push(comment.id, activity.id);
+      commentIds.push(comment.id);
+      activityIds.push(activity.id);
     }
 
-    const expected = [...createdIds].sort();
+    // Type is the second key component: all ACTIVITY entries precede all
+    // COMMENT entries at the same timestamp, then each group sorts by id.
+    const expected = [...activityIds.sort(), ...commentIds.sort()];
     const full = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=100");
     expect(full.body.data.timeline.map((e) => e.id)).toEqual(expected);
 
@@ -690,6 +748,52 @@ describe("GET issue timeline", () => {
     );
     const seen = [...first.body.data.timeline, ...second.body.data.timeline].map((e) => e.id);
     expect(seen).toEqual(expected);
+  });
+
+  it("uses entry type as the final tie-breaker when ids collide across tables", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+    await prisma.issueActivity.deleteMany({ where: { issueId: issue.id } });
+    await prisma.issueComment.deleteMany({ where: { issueId: issue.id } });
+
+    const sameTime = new Date("2026-11-16T12:00:00.000Z");
+    const sharedId = "11111111-1111-4111-8111-111111111111";
+
+    // Same UUID in both tables is legal: each table has its own primary key.
+    await prisma.issueComment.create({
+      data: {
+        id: sharedId,
+        issueId: issue.id,
+        authorId: t.owner.userId,
+        body: "Colliding comment",
+        createdAt: sameTime,
+      },
+    });
+    await prisma.issueActivity.create({
+      data: {
+        id: sharedId,
+        issueId: issue.id,
+        actorId: t.owner.userId,
+        type: "STATUS_CHANGED",
+        oldValue: "NEW",
+        newValue: "IN_PROGRESS",
+        createdAt: sameTime,
+      },
+    });
+
+    const first = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=1");
+    const second = await getTimeline(
+      t.owner.as,
+      t.issuesPath,
+      issue.number,
+      `?limit=1&cursor=${encodeURIComponent(first.body.data.pagination.nextCursor)}`
+    );
+
+    expect(first.body.data.timeline).toHaveLength(1);
+    expect(first.body.data.timeline[0]).toMatchObject({ id: sharedId, type: "ACTIVITY" });
+    expect(second.body.data.timeline).toHaveLength(1);
+    expect(second.body.data.timeline[0]).toMatchObject({ id: sharedId, type: "COMMENT" });
+    expect(second.body.data.pagination).toEqual({ limit: 1, nextCursor: null, hasMore: false });
   });
 
   it("does not duplicate or skip older entries when a comment is inserted between pages", async () => {

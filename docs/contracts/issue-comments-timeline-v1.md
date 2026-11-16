@@ -77,6 +77,8 @@ Every tracked issue change and its activity row are written in one database tran
 
 If activity insertion fails, the issue update rolls back. Issue creation (dashboard and widget) also inserts `ISSUE_CREATED` in the same transaction as the issue row and issue-number increment.
 
+Assignee membership is validated on the same transaction client, immediately before the update. A stale, removed, or cross-organization assignee is rejected without a partial assignment or activity row.
+
 An update that submits a value equal to the stored value creates no activity row. Fields outside the seven tracked types (environment, timestamps, source, page URL, context) never create activity.
 
 ### Actor attribution
@@ -198,7 +200,7 @@ The endpoint is read-only and requires a member session. Unknown query parameter
 
 ### Ordering and cursor semantics
 
-The server orders the merged stream by `(createdAt ASC, id ASC)`. `id` is the deterministic tie-breaker for records created in the same millisecond. The cursor encodes that pair as base64url of `<createdAt ISO-8601>|<id>` and is opaque to clients.
+The server orders the merged stream by `(createdAt ASC, type ASC, id ASC)`, where `type` sorts `ACTIVITY` before `COMMENT`. Comment and activity rows each have their own UUID primary key, so an id is only unique within its table; `type` is the second key component that makes the order total, and `id` is the final deterministic tie-breaker. The cursor encodes that triple as base64url of `<createdAt ISO-8601>|<type>|<id>` and is opaque to clients. Cursors from an older two-part format are rejected as invalid.
 
 The query is a keyset query: each page fetches records after the cursor pair from both tables, merges them, and returns the first `limit` entries. Because the ordering key is immutable and unique, entries inserted between page requests do not cause duplicates or skips of older entries. Row order from PostgreSQL is never used.
 
@@ -390,7 +392,7 @@ Response `200 OK`:
       { "id": "0a1f...", "type": "ACTIVITY", "activityType": "ISSUE_CREATED", "actor": { "id": "b1f6...", "name": "Priya" }, "oldValue": null, "newValue": null, "createdAt": "2026-11-16T09:15:00.000Z" },
       { "id": "5c5a...", "type": "COMMENT", "issueId": "0f2b8c1d-4e5f-4a6b-8c9d-0e1f2a3b4c5d", "author": { "id": "b1f6...", "name": "Priya" }, "body": "The login button is not working on Safari.", "visibility": "PUBLIC", "createdAt": "2026-11-16T09:20:00.000Z", "editedAt": null, "deletedAt": null }
     ],
-    "pagination": { "limit": 2, "nextCursor": "MjAyNi0xMS0xNlQwOToyMDowMC4wMDBafDVjNWExZDZlLTJiM2YtNGE0NC05ZDYxLTJiMGM3ZjhlOWExMg", "hasMore": true }
+    "pagination": { "limit": 2, "nextCursor": "MjAyNi0xMS0xNlQwOToyMDowMC4wMDBafENPTU1FTlR8NWM1YTFkNmUtMmIzZi00YTQ0LTlkNjEtMmIwYzdmOGU5YTEy", "hasMore": true }
   }
 }
 ```
@@ -398,7 +400,7 @@ Response `200 OK`:
 Request 2:
 
 ```
-GET .../timeline?limit=2&cursor=MjAyNi0xMS0xNlQwOToyMDowMC4wMDBafDVjNWExZDZlLTJiM2YtNGE0NC05ZDYxLTJiMGM3ZjhlOWExMg
+GET .../timeline?limit=2&cursor=MjAyNi0xMS0xNlQwOToyMDowMC4wMDBafENPTU1FTlR8NWM1YTFkNmUtMmIzZi00YTQ0LTlkNjEtMmIwYzdmOGU5YTEy
 ```
 
 Returns the next entries with no duplicates or gaps.

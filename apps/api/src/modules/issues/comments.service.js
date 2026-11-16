@@ -133,15 +133,17 @@ export async function deleteComment(projectId, number, commentId, actorId, role)
   return { deleted: true, commentId: existing.id };
 }
 
-const encodeCursor = (createdAt, id) =>
-  Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
+const TIMELINE_ENTRY_TYPES = ["ACTIVITY", "COMMENT"];
+
+const encodeCursor = (createdAt, type, id) =>
+  Buffer.from(`${createdAt.toISOString()}|${type}|${id}`).toString("base64url");
 
 export function decodeTimelineCursor(rawCursor) {
   if (!/^[A-Za-z0-9_-]+$/.test(rawCursor)) {
     throw badRequest("Invalid cursor");
   }
 
-  const [createdAtRaw, id, ...rest] = Buffer.from(rawCursor, "base64url")
+  const [createdAtRaw, type, id, ...rest] = Buffer.from(rawCursor, "base64url")
     .toString("utf8")
     .split("|");
   const createdAt = new Date(createdAtRaw);
@@ -151,44 +153,50 @@ export function decodeTimelineCursor(rawCursor) {
     rest.length > 0 ||
     Number.isNaN(createdAt.getTime()) ||
     createdAt.toISOString() !== createdAtRaw ||
+    !TIMELINE_ENTRY_TYPES.includes(type) ||
     !uuidSchema.safeParse(id).success
   ) {
     throw badRequest("Invalid cursor");
   }
 
-  return { createdAt, id };
+  return { createdAt, type, id };
 }
+
+// Both tables have their own UUID primary key, so ids are only unique within a
+// table. Entry type is the second key component that makes the order total.
+const buildCursorWhere = (cursor, type) => {
+  if (!cursor) return {};
+
+  const or = [{ createdAt: { gt: cursor.createdAt } }];
+  if (cursor.type === type) {
+    or.push({ AND: [{ createdAt: cursor.createdAt }, { id: { gt: cursor.id } }] });
+  } else if (type > cursor.type) {
+    or.push({ createdAt: cursor.createdAt });
+  }
+
+  return { OR: or };
+};
 
 const compareTimelineEntries = (a, b) =>
   a.sortCreatedAt.getTime() - b.sortCreatedAt.getTime() ||
+  (a.sortType < b.sortType ? -1 : a.sortType > b.sortType ? 1 : 0) ||
   (a.sortId < b.sortId ? -1 : a.sortId > b.sortId ? 1 : 0);
 
 export async function getIssueTimeline(projectId, number, query) {
   const issueId = await findIssueId(projectId, number);
   const limit = query.limit;
   const cursor = query.cursor ? decodeTimelineCursor(query.cursor) : null;
-
-  // Keyset pagination on (createdAt, id): deterministic across both tables.
-  const cursorWhere = cursor
-    ? {
-        OR: [
-          { createdAt: { gt: cursor.createdAt } },
-          { AND: [{ createdAt: cursor.createdAt }, { id: { gt: cursor.id } }] },
-        ],
-      }
-    : {};
-  const where = { issueId, ...cursorWhere };
   const take = limit + 1;
 
   const [comments, activities] = await Promise.all([
     prisma.issueComment.findMany({
-      where,
+      where: { issueId, ...buildCursorWhere(cursor, "COMMENT") },
       select: commentSelect,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take,
     }),
     prisma.issueActivity.findMany({
-      where,
+      where: { issueId, ...buildCursorWhere(cursor, "ACTIVITY") },
       select: activitySelect,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take,
@@ -198,11 +206,13 @@ export async function getIssueTimeline(projectId, number, query) {
   const merged = [
     ...comments.map((comment) => ({
       sortCreatedAt: comment.createdAt,
+      sortType: "COMMENT",
       sortId: comment.id,
       entry: { type: "COMMENT", ...toComment(comment) },
     })),
     ...activities.map((activity) => ({
       sortCreatedAt: activity.createdAt,
+      sortType: "ACTIVITY",
       sortId: activity.id,
       entry: toActivity(activity),
     })),
@@ -216,7 +226,8 @@ export async function getIssueTimeline(projectId, number, query) {
     timeline: page.map(({ entry }) => entry),
     pagination: {
       limit,
-      nextCursor: hasMore && last ? encodeCursor(last.sortCreatedAt, last.sortId) : null,
+      nextCursor:
+        hasMore && last ? encodeCursor(last.sortCreatedAt, last.sortType, last.sortId) : null,
       hasMore,
     },
   };

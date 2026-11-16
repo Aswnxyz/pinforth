@@ -96,9 +96,10 @@ const toIssueDetail = (issue) => ({
   context: issue.context,
 });
 
-async function assertAssigneeInOrg(organizationId, memberId) {
+// The client is injectable so updateIssue can validate inside its transaction.
+async function assertAssigneeInOrg(organizationId, memberId, client = prisma) {
   if (!memberId) return null;
-  const member = await prisma.organizationMember.findFirst({
+  const member = await client.organizationMember.findFirst({
     where: { id: memberId, organizationId },
     select: { id: true, user: { select: { name: true } } },
   });
@@ -278,11 +279,6 @@ export async function getIssue(projectId, number) {
 }
 
 export async function updateIssue(organizationId, projectId, number, actorId, input) {
-  let nextAssignee;
-  if (input.assigneeId !== undefined && input.assigneeId !== null) {
-    nextAssignee = await assertAssigneeInOrg(organizationId, input.assigneeId);
-  }
-
   if (input.environmentId !== undefined && input.environmentId !== null) {
     await assertEnvironmentInProject(projectId, input.environmentId);
   }
@@ -304,6 +300,13 @@ export async function updateIssue(organizationId, projectId, number, actorId, in
     if (!existing) {
       throw notFound("Issue not found");
     }
+
+    // Validate inside the transaction so the assignment and its activity row
+    // cannot commit against a membership that disappeared in between.
+    const nextAssignee =
+      input.assigneeId !== undefined && input.assigneeId !== null
+        ? await assertAssigneeInOrg(organizationId, input.assigneeId, tx)
+        : null;
 
     const activityRows = buildTrackedActivityRows(
       existing.id,
