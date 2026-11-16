@@ -33,6 +33,7 @@ export function EnvironmentList({
   onEdit,
   onInvite,
   panel,
+  footer,
 }: {
   environments: readonly EnvironmentListItem[];
   /** Receives the clicked row; absent renders a read-only list. */
@@ -41,6 +42,8 @@ export function EnvironmentList({
   onInvite?: (environment: EnvironmentListItem) => void;
   /** Content shown under a row, such as its open invite flow. */
   panel?: (environment: EnvironmentListItem) => ReactNode;
+  /** Always-on content under a row, such as who can review it. */
+  footer?: (environment: EnvironmentListItem) => ReactNode;
 }) {
   if (environments.length === 0) {
     return (
@@ -57,6 +60,7 @@ export function EnvironmentList({
         // javascript: URL) is shown as text so it can never execute on click.
         const href = safeWebsiteUrl(environment.url);
         const open = panel?.(environment);
+        const below = footer?.(environment);
 
         return (
           <li key={environment.id ?? environment.url} className="px-4 py-3">
@@ -126,6 +130,8 @@ export function EnvironmentList({
                 ) : null}
               </div>
             </div>
+
+            {below ? <div className="mt-2">{below}</div> : null}
 
             {open ? <div className="mt-4 border-t border-border pt-4">{open}</div> : null}
           </li>
