@@ -112,16 +112,17 @@ export async function updateComment(projectId, number, commentId, authorId, inpu
 export async function deleteComment(projectId, number, commentId, actorId, role) {
   const existing = await findComment(projectId, number, commentId);
 
-  // Repeated deletion is a no-op but still succeeds.
-  if (existing.deletedAt) {
-    return { deleted: true, commentId: existing.id };
-  }
-
   const isAuthor = existing.author?.id === actorId;
   const isManager = role === "OWNER" || role === "ADMIN";
 
+  // Authorize before the idempotent early return so a non-author never gets 200.
   if (!isAuthor && !isManager) {
     throw forbidden("You cannot delete this comment");
+  }
+
+  // Repeated deletion is a no-op but still succeeds.
+  if (existing.deletedAt) {
+    return { deleted: true, commentId: existing.id };
   }
 
   await prisma.issueComment.updateMany({
@@ -145,9 +146,11 @@ export function decodeTimelineCursor(rawCursor) {
     .split("|");
   const createdAt = new Date(createdAtRaw);
 
+  // Only accept the canonical ISO form this service emits.
   if (
     rest.length > 0 ||
     Number.isNaN(createdAt.getTime()) ||
+    createdAt.toISOString() !== createdAtRaw ||
     !uuidSchema.safeParse(id).success
   ) {
     throw badRequest("Invalid cursor");

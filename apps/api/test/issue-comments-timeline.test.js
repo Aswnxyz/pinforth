@@ -424,6 +424,23 @@ describe("PATCH issue comments", () => {
     }
   });
 
+  it("returns 404 for a non-UUID comment id", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+
+    const patch = await t.owner
+      .as("patch", `${t.issuesPath}/${issue.number}/comments/not-a-uuid`)
+      .send({ body: "Hello" });
+    expect(patch.status).toBe(404);
+    expect(patch.body.code).toBe("NOT_FOUND");
+
+    const remove = await t.owner.as(
+      "delete",
+      `${t.issuesPath}/${issue.number}/comments/not-a-uuid`
+    );
+    expect(remove.status).toBe(404);
+  });
+
   it("does not allow editing a soft-deleted comment, and a deleted comment cannot leak its body", async () => {
     const t = await setupTeam();
     const issue = await createIssue(t.owner.as, t.issuesPath);
@@ -500,6 +517,19 @@ describe("DELETE issue comments", () => {
     const second = await prisma.issueComment.findUniqueOrThrow({ where: { id: commentId } });
 
     expect(second.deletedAt.toISOString()).toBe(first.deletedAt.toISOString());
+  });
+
+  it("forbids a non-author from deleting an already-deleted comment", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+    const created = await createComment(t.owner.as, t.issuesPath, issue.number, "Owner only");
+    const path = `${t.issuesPath}/${issue.number}/comments/${created.body.data.comment.id}`;
+
+    expect((await t.owner.as("delete", path)).status).toBe(200);
+
+    const res = await t.member.as("delete", path);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("FORBIDDEN");
   });
 });
 
@@ -617,6 +647,101 @@ describe("GET issue timeline", () => {
     expect([...firstPage.body.data.timeline, ...secondPage.body.data.timeline].map((e) => e.id)).toEqual(ids);
   });
 
+  it("tie-breaks deterministically across comments and activity at the same timestamp", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+    await prisma.issueActivity.deleteMany({ where: { issueId: issue.id } });
+    await prisma.issueComment.deleteMany({ where: { issueId: issue.id } });
+
+    const sameTime = new Date("2026-11-16T11:00:00.000Z");
+    const createdIds = [];
+    for (let i = 0; i < 2; i += 1) {
+      const comment = await prisma.issueComment.create({
+        data: {
+          issueId: issue.id,
+          authorId: t.owner.userId,
+          body: `Tie comment ${i}`,
+          createdAt: sameTime,
+        },
+      });
+      const activity = await prisma.issueActivity.create({
+        data: {
+          issueId: issue.id,
+          actorId: t.owner.userId,
+          type: "STATUS_CHANGED",
+          oldValue: "NEW",
+          newValue: "IN_PROGRESS",
+          createdAt: sameTime,
+        },
+      });
+      createdIds.push(comment.id, activity.id);
+    }
+
+    const expected = [...createdIds].sort();
+    const full = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=100");
+    expect(full.body.data.timeline.map((e) => e.id)).toEqual(expected);
+
+    const first = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=2");
+    const second = await getTimeline(
+      t.owner.as,
+      t.issuesPath,
+      issue.number,
+      `?limit=2&cursor=${encodeURIComponent(first.body.data.pagination.nextCursor)}`
+    );
+    const seen = [...first.body.data.timeline, ...second.body.data.timeline].map((e) => e.id);
+    expect(seen).toEqual(expected);
+  });
+
+  it("does not duplicate or skip older entries when a comment is inserted between pages", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+    for (let i = 1; i <= 4; i += 1) {
+      await createComment(t.owner.as, t.issuesPath, issue.number, `Before ${i}`);
+    }
+
+    const firstPage = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=2");
+    const seen = firstPage.body.data.timeline.map((e) => e.id);
+
+    // Insert between requests, after the cursor position.
+    const inserted = await createComment(t.owner.as, t.issuesPath, issue.number, "Inserted later");
+    await prisma.issueComment.update({
+      where: { id: inserted.body.data.comment.id },
+      data: { createdAt: new Date("2030-01-01T00:00:00.000Z") },
+    });
+
+    let cursor = firstPage.body.data.pagination.nextCursor;
+    while (cursor) {
+      const page = await getTimeline(
+        t.owner.as,
+        t.issuesPath,
+        issue.number,
+        `?limit=2&cursor=${encodeURIComponent(cursor)}`
+      );
+      seen.push(...page.body.data.timeline.map((e) => e.id));
+      cursor = page.body.data.pagination.nextCursor;
+    }
+
+    const full = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=100");
+    expect(seen).toEqual(full.body.data.timeline.map((e) => e.id));
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen).toContain(inserted.body.data.comment.id);
+  });
+
+  it("reports hasMore false when the page exactly fills the limit", async () => {
+    const t = await setupTeam();
+    const issue = await createIssue(t.owner.as, t.issuesPath);
+    await createComment(t.owner.as, t.issuesPath, issue.number, "One comment");
+
+    const exact = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=2");
+    expect(exact.body.data.timeline).toHaveLength(2);
+    expect(exact.body.data.pagination).toEqual({ limit: 2, nextCursor: null, hasMore: false });
+
+    const smaller = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?limit=1");
+    expect(smaller.body.data.timeline).toHaveLength(1);
+    expect(smaller.body.data.pagination.hasMore).toBe(true);
+    expect(smaller.body.data.pagination.nextCursor).not.toBeNull();
+  });
+
   it("validates limit and cursor", async () => {
     const t = await setupTeam();
     const issue = await createIssue(t.owner.as, t.issuesPath);
@@ -627,6 +752,15 @@ describe("GET issue timeline", () => {
     const badCursor = await getTimeline(t.owner.as, t.issuesPath, issue.number, "?cursor=not-a-cursor");
     expect(badCursor.status).toBe(400);
     expect(badCursor.body.code).toBe("BAD_REQUEST");
+
+    const oversizedCursor = await getTimeline(
+      t.owner.as,
+      t.issuesPath,
+      issue.number,
+      `?cursor=${"a".repeat(201)}`
+    );
+    expect(oversizedCursor.status).toBe(400);
+    expect(oversizedCursor.body.code).toBe("BAD_REQUEST");
   });
 
   it("returns 404 for missing issues and outsiders", async () => {
@@ -663,6 +797,23 @@ describe("Issue list commentsCount", () => {
 
     const detail = await t.member.as("get", `${t.issuesPath}/${issue.number}`);
     expect(detail.body.data.issue.commentsCount).toBe(2);
+  });
+
+  it("includes commentsCount on issue create and update responses", async () => {
+    const t = await setupTeam();
+
+    const created = await t.owner.as("post", t.issuesPath).send({ title: "Counted issue" });
+    expect(created.status).toBe(201);
+    expect(created.body.data.issue.commentsCount).toBe(0);
+
+    const number = created.body.data.issue.number;
+    await createComment(t.owner.as, t.issuesPath, number, "One comment");
+
+    const updated = await t.owner
+      .as("patch", `${t.issuesPath}/${number}`)
+      .send({ status: "IN_PROGRESS" });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.issue.commentsCount).toBe(1);
   });
 
   it("never exposes comment bodies through issue list or detail responses", async () => {

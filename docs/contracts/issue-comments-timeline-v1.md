@@ -60,11 +60,10 @@ Indexes: `(issueId, createdAt)` for timeline reads.
 | `STATUS_CHANGED` | enum string, e.g. `"NEW"` | enum string, e.g. `"IN_PROGRESS"` | "changed status from NEW to IN_PROGRESS" |
 | `PRIORITY_CHANGED` | enum string | enum string | "changed priority from MEDIUM to HIGH" |
 | `TYPE_CHANGED` | enum string | enum string | "changed type from BUG to DESIGN" |
-| `ASSIGNEE_CHANGED` | `{ "id": uuid, "name": string \| null }` or `null` | `{ "id": uuid, "name": string \| null }` or `null` | "assigned this issue to Sachin" / "unassigned this issue" |
-| `TITLE_CHANGED` | previous title string | new title string | "changed the title" |
+| `ASSIGNEE_CHANGED` | `{ "id": uuid, "name": string \| null }` or `null` | `{ "id": uuid, "name": string \| null }` or `null` | "assigned this issue to Sachin" / "unassigned this issue" || `TITLE_CHANGED` | previous title string | new title string | "changed the title" |
 | `DESCRIPTION_CHANGED` | `null` | `null` | "updated the description" |
 
-Description values are not stored because a description can be 10,000 characters; the activity records that it changed, not its full history. Assignee name is snapshotted at the time of the change so history stays readable after a rename or removal.
+Description values are not stored because a description can be 10,000 characters; the activity records that it changed, not its full history. Assignee name is snapshotted at the time of the change so history stays readable after a rename or removal. The assignee `id` is the `OrganizationMember` id, matching `IssueSummary.assignee.id`.
 
 ### Activity integrity
 
@@ -140,9 +139,9 @@ Query parameters:
 | Name | Type | Default | Rules |
 | --- | --- | --- | --- |
 | `limit` | integer | `20` | 1 to 100. Values outside the range fail validation. |
-| `cursor` | string | absent | Opaque cursor returned as `pagination.nextCursor`. Max 200 characters. |
+| `cursor` | string | absent | Opaque cursor returned as `pagination.nextCursor`. Malformed values return `400 BAD_REQUEST` with `Invalid cursor`. |
 
-The endpoint is read-only and requires a member session.
+The endpoint is read-only and requires a member session. Unknown query parameters are rejected with `400 VALIDATION_ERROR`, consistent with the existing issue-list query schema.
 
 ### Response `200 OK`
 
@@ -163,6 +162,7 @@ The endpoint is read-only and requires a member session.
       {
         "id": "5c5a1d6e-2b3f-4a44-9d61-2b0c7f8e9a12",
         "type": "COMMENT",
+        "issueId": "0f2b8c1d-4e5f-4a6b-8c9d-0e1f2a3b4c5d",
         "author": { "id": "b1f6d6d0-7a1c-4f6d-9f2c-1c2f7a8b9c01", "name": "Priya" },
         "body": "The login button is not working on Safari.",
         "visibility": "PUBLIC",
@@ -191,6 +191,7 @@ The endpoint is read-only and requires a member session.
 
 - `timeline` is ordered **oldest first**.
 - Entries are a discriminated union on `type`: `"COMMENT"` or `"ACTIVITY"`.
+- Comment entries also include `issueId`, matching the shared API type.
 - A deleted comment is returned as a tombstone: `body` is `null`, `deletedAt` is set, and `author`, `visibility`, and `createdAt` are preserved for continuity.
 - Actor/author objects contain `id` and `name` only; email is not included in the timeline.
 - `nextCursor` is `null` when `hasMore` is `false`. Pass it back as `cursor` to fetch the next page.
@@ -270,7 +271,7 @@ Rules:
 - Only the original author may edit; anyone else gets `403 FORBIDDEN`.
 - `body` is required, trimmed, non-empty, max 10,000 characters.
 - Only `body` is accepted. `visibility`, `issueId`, `authorId`, `createdAt`, and `deletedAt` are rejected by strict validation.
-- `editedAt` is set to the current time. `createdAt` never changes.
+- `editedAt` is set to the current time. `createdAt` never changes. An edit that submits the identical body is still recorded as an edit (`editedAt` moves).
 - A soft-deleted comment returns `409 CONFLICT` with code `CONFLICT`.
 
 Response `200 OK` returns `{ "success": true, "data": { "comment": { ... } } }` with the updated comment, including `editedAt`.
@@ -336,7 +337,7 @@ Every issue in `GET /api/v1/organizations/:orgId/projects/:projectSlug/issues` n
 | Comment `visibility` | `PUBLIC` or `INTERNAL` | `400 VALIDATION_ERROR` |
 | Edit body | Same as create, `body` only | `400 VALIDATION_ERROR` |
 | Timeline `limit` | Integer 1–100, default 20 | `400 VALIDATION_ERROR` |
-| Timeline `cursor` | Valid opaque cursor | `400 BAD_REQUEST` (`Invalid cursor`) |
+| Timeline `cursor` | Opaque cursor from `nextCursor` | `400 BAD_REQUEST` (`Invalid cursor`) |
 | Issue `:number` | Positive integer, exists in project | `404 NOT_FOUND` |
 | Comment `:commentId` | UUID, exists on that issue | `404 NOT_FOUND` |
 | Unknown request fields | Strict schemas reject them | `400 VALIDATION_ERROR` |
@@ -387,7 +388,7 @@ Response `200 OK`:
   "data": {
     "timeline": [
       { "id": "0a1f...", "type": "ACTIVITY", "activityType": "ISSUE_CREATED", "actor": { "id": "b1f6...", "name": "Priya" }, "oldValue": null, "newValue": null, "createdAt": "2026-11-16T09:15:00.000Z" },
-      { "id": "5c5a...", "type": "COMMENT", "author": { "id": "b1f6...", "name": "Priya" }, "body": "The login button is not working on Safari.", "visibility": "PUBLIC", "createdAt": "2026-11-16T09:20:00.000Z", "editedAt": null, "deletedAt": null }
+      { "id": "5c5a...", "type": "COMMENT", "issueId": "0f2b8c1d-4e5f-4a6b-8c9d-0e1f2a3b4c5d", "author": { "id": "b1f6...", "name": "Priya" }, "body": "The login button is not working on Safari.", "visibility": "PUBLIC", "createdAt": "2026-11-16T09:20:00.000Z", "editedAt": null, "deletedAt": null }
     ],
     "pagination": { "limit": 2, "nextCursor": "MjAyNi0xMS0xNlQwOToyMDowMC4wMDBafDVjNWExZDZlLTJiM2YtNGE0NC05ZDYxLTJiMGM3ZjhlOWExMg", "hasMore": true }
   }
