@@ -9,6 +9,7 @@ import { EnvironmentForm } from "@/components/projects/environment-form";
 import { EnvironmentList } from "@/components/projects/environment-list";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { EnvironmentInvite } from "@/components/review-rounds/environment-invite";
+import { EnvironmentReviewers } from "@/components/review-rounds/environment-reviewers";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
 import { WorkspaceLoading } from "@/components/workspace/workspace-states";
 import { FormAlert } from "@/components/ui/form-alert";
@@ -184,6 +185,9 @@ function ProjectDetailSection({
   const [inviting, setInviting] = useState<{ key: string; environmentId: string } | null>(null);
   const activeInviteId =
     inviting && inviting.key === requestKey ? inviting.environmentId : null;
+
+  // Per environment: bumped when its invite closes, so a new link shows up.
+  const [reviewerReloads, setReviewerReloads] = useState<Record<string, number>>({});
 
   useEffect(() => {
     // The session was confirmed invalid by the API's refresh flow.
@@ -986,11 +990,32 @@ function ProjectDetailSection({
                 orgId={organization.id}
                 projectSlug={projectSlug}
                 environment={{ id: environment.id, name: environment.name }}
-                onClose={() => setInviting(null)}
+                onClose={() => {
+                  const environmentId = environment.id as string;
+                  setInviting(null);
+                  setReviewerReloads((current) => ({
+                    ...current,
+                    [environmentId]: (current[environmentId] ?? 0) + 1,
+                  }));
+                }}
                 onGone={() => {
                   setInviting(null);
                   setRetryToken((token) => token + 1);
                 }}
+                onLogin={() => router.replace("/login")}
+              />
+            ) : null
+          }
+          // Members can see who has access; only managers can revoke.
+          footer={(environment) =>
+            environment.id ? (
+              <EnvironmentReviewers
+                orgId={organization.id}
+                projectSlug={projectSlug}
+                environment={{ id: environment.id, name: environment.name }}
+                reloadToken={reviewerReloads[environment.id] ?? 0}
+                canRevoke={canManageProjects(organization.role)}
+                onGone={() => setRetryToken((token) => token + 1)}
                 onLogin={() => router.replace("/login")}
               />
             ) : null

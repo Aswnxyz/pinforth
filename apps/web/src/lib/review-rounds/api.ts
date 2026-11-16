@@ -31,6 +31,18 @@ export interface GuestLink {
   revokedAt: string | null;
 }
 
+export const GUEST_LINK_STATUSES = ["ACTIVE", "EXPIRED", "REVOKED"] as const;
+export type GuestLinkStatus = (typeof GUEST_LINK_STATUSES)[number];
+
+/** A link as listed on its environment; `status` is worked out by the API. */
+export interface EnvironmentGuestLink extends GuestLink {
+  status: GuestLinkStatus;
+  createdAt: string;
+  /** When the widget last started a session on the website, not a link click. */
+  lastOpenedAt: string | null;
+  issuesCount: number;
+}
+
 /** What creating a link returns: the only time the invitation URL exists. */
 export interface CreatedGuestLink {
   guestLink: GuestLink;
@@ -99,6 +111,20 @@ function isGuestLink(value: unknown): value is GuestLink {
     isNullableString(value.revokedAt)
   );
 }
+
+export function isEnvironmentGuestLink(value: unknown): value is EnvironmentGuestLink {
+  return (
+    isGuestLink(value) &&
+    isRecord(value) &&
+    (GUEST_LINK_STATUSES as readonly unknown[]).includes(value.status) &&
+    isString(value.createdAt) &&
+    isNullableString(value.lastOpenedAt) &&
+    isCount(value.issuesCount)
+  );
+}
+
+const isEnvironmentLinkList = (value: unknown): value is EnvironmentGuestLink[] =>
+  Array.isArray(value) && value.every(isEnvironmentGuestLink);
 
 function isCreatedGuestLink(value: unknown): value is CreatedGuestLink {
   return isRecord(value) && isGuestLink(value.guestLink) && isString(value.invitationUrl);
@@ -199,6 +225,19 @@ export async function createGuestLink(
     "reviewerEmail",
     "expiresInDays",
   ]);
+}
+
+/** Every link from every round on one environment, newest first. */
+export async function listEnvironmentGuestLinks(
+  orgId: string,
+  projectSlug: string,
+  environmentId: string,
+): Promise<ReviewApiOutcome<never, EnvironmentGuestLink[]>> {
+  const res = await apiFetch<unknown>(
+    `/api/v1/organizations/${encodeURIComponent(orgId)}/projects/${encodeURIComponent(projectSlug)}/environments/${encodeURIComponent(environmentId)}/guest-links`,
+    { method: "GET" },
+  );
+  return mapOutcome(res, pickField("guestLinks"), isEnvironmentLinkList);
 }
 
 /** Safe to repeat: revoking a revoked link answers the same way. */

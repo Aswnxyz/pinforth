@@ -17,7 +17,7 @@ const secondaryButton =
 
 /**
  * The one moment a review link exists in readable form: the API keeps only
- * its hash. Revoking is offered here because there is no list of links yet.
+ * its hash. Revoking is also offered here, for a link sent by mistake.
  */
 export function GuestLinkCreated({
   created,
