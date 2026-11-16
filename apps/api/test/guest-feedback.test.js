@@ -1038,6 +1038,15 @@ describe("Milestone 2A — Guest Review and Widget Feedback API", () => {
         viewport: { width: 375, height: 667 },
       });
 
+      const activity = await prisma.issueActivity.findMany({ where: { issueId: created.id } });
+      expect(activity).toHaveLength(1);
+      expect(activity[0]).toMatchObject({
+        type: "ISSUE_CREATED",
+        actorId: null,
+        oldValue: null,
+        newValue: null,
+      });
+
       // Verify visibility in the existing agency Issues API
       const listRes = await owner
         .as("get", `/organizations/${orgId}/projects/${project.slug}/issues`)

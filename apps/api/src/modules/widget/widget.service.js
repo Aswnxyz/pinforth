@@ -328,6 +328,10 @@ export async function createWidgetIssue(rawSessionToken, origin, input) {
         select: widgetIssueSelect,
       });
 
+      await tx.issueActivity.create({
+        data: { issueId: created.id, actorId: null, type: "ISSUE_CREATED" },
+      });
+
       return created;
     });
   } catch (err) {

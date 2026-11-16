@@ -114,6 +114,8 @@ export interface IssueSummary {
   guest?: IssueGuest | null;
   reviewRound?: IssueReviewRound | null;
   assignee: IssueAssignee | null;
+  /** Non-deleted comments, both PUBLIC and INTERNAL. */
+  commentsCount: number;
   createdAt: string;
   updatedAt: string;
 }
