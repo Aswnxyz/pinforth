@@ -8,6 +8,7 @@ import { IssueDeleteCard } from "@/components/issues/issue-delete-card";
 import { IssueFieldsPanel } from "@/components/issues/issue-fields-panel";
 import { BackLink, IssuePageShell, LoadStateView } from "@/components/issues/issue-page-shell";
 import { IssueTextEditor } from "@/components/issues/issue-text-editor";
+import { IssueTimeline } from "@/components/issues/timeline/issue-timeline";
 import { FormAlert } from "@/components/ui/form-alert";
 import type { OrganizationSummary } from "@/lib/organizations/api";
 import { canManageProjects } from "@/lib/organizations/organization-access";
@@ -282,6 +283,15 @@ function IssueDetailSection({
           )}
 
           <IssueContext issue={issue} />
+
+          <IssueTimeline
+            orgId={organization.id}
+            projectSlug={projectSlug}
+            issue={issue}
+            isManager={canManageProjects(organization.role)}
+            onIssueGone={issueLoad.retry}
+            onLogin={() => router.replace("/login")}
+          />
 
           {canManageProjects(organization.role) ? (
             session.confirmingDelete ? (

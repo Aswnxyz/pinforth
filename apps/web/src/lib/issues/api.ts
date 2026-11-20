@@ -55,6 +55,8 @@ export interface IssueSummary {
   reviewRound?: { id: string; name: string } | null;
   assignee: IssuePerson | null;
   environment: { id: string; name: string } | null;
+  /** Comments not deleted, internal included. */
+  commentsCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -218,6 +220,7 @@ export function isIssueSummary(value: unknown): value is IssueSummary {
       (isRecord(value.environment) &&
         isString(value.environment.id) &&
         isString(value.environment.name))) &&
+    isCount(value.commentsCount) &&
     isString(value.createdAt) &&
     isString(value.updatedAt)
   );
