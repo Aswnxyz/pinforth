@@ -24,7 +24,7 @@ export type AuthOutcome =
  */
 export const POST_AUTH_REDIRECT = "/w";
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 /** The message shown whenever the API could not be reached at all. */
