@@ -39,6 +39,7 @@ const issueSelectSummary = {
       name: true,
     },
   },
+  _count: { select: { comments: { where: { deletedAt: null } } } },
 };
 
 const issueSelectDetail = {
@@ -82,6 +83,7 @@ const toIssueSummary = (issue) => ({
       }
     : null,
   assignee: toAssignee(issue.assignee),
+  commentsCount: issue._count.comments,
   createdAt: issue.createdAt.toISOString(),
   updatedAt: issue.updatedAt.toISOString(),
 });
@@ -94,15 +96,57 @@ const toIssueDetail = (issue) => ({
   context: issue.context,
 });
 
-async function assertAssigneeInOrg(organizationId, memberId) {
-  if (!memberId) return;
-  const member = await prisma.organizationMember.findFirst({
+// The client is injectable so updateIssue can validate inside its transaction.
+async function assertAssigneeInOrg(organizationId, memberId, client = prisma) {
+  if (!memberId) return null;
+  const member = await client.organizationMember.findFirst({
     where: { id: memberId, organizationId },
-    select: { id: true },
+    select: { id: true, user: { select: { name: true } } },
   });
   if (!member) {
     throw badRequest("Assignee must be a member of this organization");
   }
+  return member;
+}
+
+const toAssigneeActivityValue = (assignee) =>
+  assignee ? { id: assignee.id, name: assignee.user.name } : null;
+
+// One activity row per tracked field that actually changed. Values are
+// documented in docs/contracts/issue-comments-timeline-v1.md.
+function buildTrackedActivityRows(issueId, actorId, existing, input, nextAssignee) {
+  const rows = [];
+  const add = (type, oldValue, newValue) => {
+    rows.push({ issueId, actorId, type, oldValue, newValue });
+  };
+
+  if (input.status !== undefined && input.status !== existing.status) {
+    add("STATUS_CHANGED", existing.status, input.status);
+  }
+  if (input.priority !== undefined && input.priority !== existing.priority) {
+    add("PRIORITY_CHANGED", existing.priority, input.priority);
+  }
+  if (input.type !== undefined && input.type !== existing.type) {
+    add("TYPE_CHANGED", existing.type, input.type);
+  }
+  if (input.assigneeId !== undefined && input.assigneeId !== (existing.assignee?.id ?? null)) {
+    add(
+      "ASSIGNEE_CHANGED",
+      toAssigneeActivityValue(existing.assignee),
+      toAssigneeActivityValue(nextAssignee)
+    );
+  }
+  if (input.title !== undefined && input.title !== existing.title) {
+    add("TITLE_CHANGED", existing.title, input.title);
+  }
+  if (
+    input.description !== undefined &&
+    (input.description ?? null) !== (existing.description ?? null)
+  ) {
+    add("DESCRIPTION_CHANGED", null, null);
+  }
+
+  return rows;
 }
 
 async function assertEnvironmentInProject(projectId, environmentId) {
@@ -145,6 +189,10 @@ export async function createIssue(organizationId, projectId, reporterId, input) 
         environmentId: input.environmentId ?? null,
       },
       select: issueSelectDetail,
+    });
+
+    await tx.issueActivity.create({
+      data: { issueId: issue.id, actorId: reporterId, type: "ISSUE_CREATED" },
     });
 
     return toIssueDetail(issue);
@@ -230,39 +278,64 @@ export async function getIssue(projectId, number) {
   return toIssueDetail(issue);
 }
 
-export async function updateIssue(organizationId, projectId, number, input) {
-  const existing = await prisma.issue.findUnique({
-    where: { projectId_number: { projectId, number } },
-    select: { id: true },
-  });
-
-  if (!existing) {
-    throw notFound("Issue not found");
-  }
-
-  if (input.assigneeId !== undefined && input.assigneeId !== null) {
-    await assertAssigneeInOrg(organizationId, input.assigneeId);
-  }
-
+export async function updateIssue(organizationId, projectId, number, actorId, input) {
   if (input.environmentId !== undefined && input.environmentId !== null) {
     await assertEnvironmentInProject(projectId, input.environmentId);
   }
 
-  const updated = await prisma.issue.update({
-    where: { id: existing.id },
-    data: {
-      ...(input.title !== undefined ? { title: input.title } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.type !== undefined ? { type: input.type } : {}),
-      ...(input.priority !== undefined ? { priority: input.priority } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-      ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
-      ...(input.environmentId !== undefined ? { environmentId: input.environmentId } : {}),
-    },
-    select: issueSelectDetail,
-  });
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.issue.findUnique({
+      where: { projectId_number: { projectId, number } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        type: true,
+        priority: true,
+        status: true,
+        assignee: { select: { id: true, user: { select: { name: true } } } },
+      },
+    });
 
-  return toIssueDetail(updated);
+    if (!existing) {
+      throw notFound("Issue not found");
+    }
+
+    // Validate inside the transaction so the assignment and its activity row
+    // cannot commit against a membership that disappeared in between.
+    const nextAssignee =
+      input.assigneeId !== undefined && input.assigneeId !== null
+        ? await assertAssigneeInOrg(organizationId, input.assigneeId, tx)
+        : null;
+
+    const activityRows = buildTrackedActivityRows(
+      existing.id,
+      actorId,
+      existing,
+      input,
+      nextAssignee
+    );
+
+    const updated = await tx.issue.update({
+      where: { id: existing.id },
+      data: {
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.type !== undefined ? { type: input.type } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+        ...(input.environmentId !== undefined ? { environmentId: input.environmentId } : {}),
+      },
+      select: issueSelectDetail,
+    });
+
+    if (activityRows.length > 0) {
+      await tx.issueActivity.createMany({ data: activityRows });
+    }
+
+    return toIssueDetail(updated);
+  });
 }
 
 export async function deleteIssue(projectId, number) {

@@ -51,6 +51,21 @@ enum ReviewRoundStatus {
   ARCHIVED
 }
 
+enum CommentVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum IssueActivityType {
+  ISSUE_CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  TYPE_CHANGED
+  ASSIGNEE_CHANGED
+  TITLE_CHANGED
+  DESCRIPTION_CHANGED
+}
+
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   // Stored trimmed and lowercased by the application.
@@ -70,6 +85,8 @@ model User {
   reportedIssues      Issue[]              @relation("IssueReporter")
   reviewRoundsCreated ReviewRound[]
   guestLinksCreated   GuestAccessLink[]
+  issueComments       IssueComment[]
+  issueActivity       IssueActivity[]      @relation("IssueActivityActor")
 }
 
 // One row per refresh token. Rotation creates a new row in the same family;
@@ -300,6 +317,8 @@ model Issue {
   environment Environment?        @relation(fields: [environmentId], references: [id], onDelete: SetNull)
   reviewRound ReviewRound?        @relation(fields: [reviewRoundId], references: [id], onDelete: SetNull)
   guestLink   GuestAccessLink?    @relation(fields: [guestLinkId], references: [id], onDelete: SetNull)
+  comments    IssueComment[]
+  activities  IssueActivity[]
 
   @@unique([projectId, number])
   @@index([projectId, status])
@@ -308,4 +327,41 @@ model Issue {
   @@index([reviewRoundId])
   @@index([guestLinkId])
   @@unique([guestLinkId, clientMutationId])
+}
+
+// A member conversation entry on an issue. Deletion is soft: the row and body
+// stay for audit, but deleted bodies are never serialized.
+// authorId is nullable so guest authorship can be added later via a guest link.
+model IssueComment {
+  id         String            @id @default(uuid()) @db.Uuid
+  issueId    String            @db.Uuid
+  authorId   String?           @db.Uuid
+  body       String            @db.Text
+  visibility CommentVisibility @default(PUBLIC)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  editedAt   DateTime?         @db.Timestamptz(3)
+  deletedAt  DateTime?         @db.Timestamptz(3)
+
+  issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, createdAt])
+  @@index([authorId])
+}
+
+// One row per tracked issue field change. Written in the same transaction as
+// the issue mutation it describes.
+model IssueActivity {
+  id        String            @id @default(uuid()) @db.Uuid
+  issueId   String            @db.Uuid
+  actorId   String?           @db.Uuid
+  type      IssueActivityType
+  oldValue  Json?             @db.JsonB
+  newValue  Json?             @db.JsonB
+  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  actor User? @relation("IssueActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, createdAt])
 }

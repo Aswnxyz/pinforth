@@ -3,3 +3,4 @@ export * from "./organizations.js";
 export * from "./issues.js";
 export * from "./review-rounds.js";
 export * from "./widget.js";
+export * from "./comments.js";
