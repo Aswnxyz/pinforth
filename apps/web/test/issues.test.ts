@@ -60,6 +60,7 @@ const summary: IssueSummary = {
   environment: { id: "env-1", name: "Staging" },
   reporter: person,
   assignee: null,
+  commentsCount: 2,
   createdAt: "2026-11-01T09:00:00.000Z",
   updatedAt: "2026-11-02T09:00:00.000Z",
 };
