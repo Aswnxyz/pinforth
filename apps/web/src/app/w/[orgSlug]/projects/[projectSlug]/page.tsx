@@ -8,6 +8,7 @@ import { EditProjectForm } from "@/components/projects/edit-project-form";
 import { EnvironmentForm } from "@/components/projects/environment-form";
 import { EnvironmentList } from "@/components/projects/environment-list";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { WidgetInstallCard } from "@/components/projects/widget-install-card";
 import { EnvironmentInvite } from "@/components/review-rounds/environment-invite";
 import { EnvironmentReviewers } from "@/components/review-rounds/environment-reviewers";
 import { WorkspaceGate } from "@/components/workspace/workspace-gate";
@@ -1104,6 +1105,8 @@ function ProjectDetailSection({
           </div>
         ) : null}
       </section>
+
+      {project.environments.length > 0 ? <WidgetInstallCard /> : null}
     </div>
   );
 }
