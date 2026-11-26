@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getMembership, requireMembershipRole } from "../../middleware/require-org-role.js";
 import { getProject, requireProject } from "../../middleware/require-project.js";
+import deploymentRoutes from "../deployments/deployments.routes.js";
 import issueRoutes from "../issues/issues.routes.js";
 import reviewRoundRoutes from "../review-rounds/review-rounds.routes.js";
 import { listEnvironmentGuestLinks } from "../review-rounds/review-rounds.service.js";
@@ -74,5 +75,6 @@ router.get("/:projectSlug/environments/:environmentId/guest-links", requireProje
 
 router.use("/:projectSlug/issues", requireProject, issueRoutes);
 router.use("/:projectSlug/review-rounds", requireProject, reviewRoundRoutes);
+router.use("/:projectSlug/environments/:environmentId/deployments", requireProject, deploymentRoutes);
 
 export default router;

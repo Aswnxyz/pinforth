@@ -25,6 +25,23 @@ const environmentSelect = {
   updatedAt: true,
 };
 
+// Only the newest recorded deployment is read for a project detail. Ordering
+// matches the deployment list so equal timestamps remain deterministic.
+const latestDeploymentSelect = {
+  id: true,
+  label: true,
+  createdAt: true,
+};
+
+const environmentDetailSelect = {
+  ...environmentSelect,
+  deployments: {
+    select: latestDeploymentSelect,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 1,
+  },
+};
+
 // ProjectSummary: id, name, slug, description, createdAt, updatedAt.
 const toProjectSummary = (project) => ({
   id: project.id,
@@ -44,6 +61,22 @@ const toEnvironment = (environment) => ({
   createdAt: environment.createdAt.toISOString(),
   updatedAt: environment.updatedAt.toISOString(),
 });
+
+// Project detail environments also carry their newest recorded deployment.
+const toEnvironmentDetail = (environment) => {
+  const latest = environment.deployments[0];
+
+  return {
+    ...toEnvironment(environment),
+    latestDeployment: latest
+      ? {
+          id: latest.id,
+          label: latest.label,
+          createdAt: latest.createdAt.toISOString(),
+        }
+      : null,
+  };
+};
 
 const isUniqueViolation = (error) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -117,13 +150,13 @@ export async function getProjectDetail(projectId) {
     where: { id: projectId },
     select: {
       ...projectSelect,
-      environments: { select: environmentSelect, orderBy: { createdAt: "asc" } },
+      environments: { select: environmentDetailSelect, orderBy: { createdAt: "asc" } },
     },
   });
 
   return {
     ...toProjectSummary(project),
-    environments: project.environments.map(toEnvironment),
+    environments: project.environments.map(toEnvironmentDetail),
   };
 }
 

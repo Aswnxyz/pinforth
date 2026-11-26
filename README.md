@@ -6,7 +6,7 @@ Pinforth is an AI-assisted website feedback, issue tracking, QA verification, an
 
 It aims to simplify the complete website review and delivery process—from collecting visual feedback to verifying fixes and approving releases.
 
-> **Project Status:** Active Development — Visual Feedback, Guest Reviews & Issue Management Foundation
+> **Project Status:** Active Development — Visual Feedback, Guest Reviews, Issue Management & Deployment Tracking
 
 ## The Problem
 
@@ -30,6 +30,8 @@ The key focus is not just reporting bugs, but ensuring that reported issues are 
 - Organization team member management with last-owner protection.
 - Email invitations with token validation and expiration.
 - Project environments (e.g. staging, preview) with URL validation.
+- Immutable deployment records per environment (`v1.5`, `release-candidate-2`) with optional commit SHA, URL and notes.
+- Cursor-paginated deployment history and the latest recorded deployment shown on project detail.
 
 ### Review Rounds & Scoped Guest Access
 - Review rounds linked to candidate website environments.
@@ -107,6 +109,7 @@ pinforth/
 │       │   ├── middleware/    # Auth, org roles, error handlers
 │       │   ├── modules/
 │       │   │   ├── auth/          # Authentication & sessions
+│       │   │   ├── deployments/   # Immutable environment deployment records
 │       │   │   ├── guest/         # Guest review link exchange & handoffs
 │       │   │   ├── invitations/   # Organization invites
 │       │   │   ├── issues/        # Issue tracking & guest attribution
@@ -438,6 +441,24 @@ Base path: `/api/v1/organizations/:orgId/projects`. Every route requires authent
 | `POST /:projectSlug/environments` | `OWNER`, `ADMIN` | `{ environment: Environment }` (201). Body: `{ name, url }` |
 | `PATCH /:projectSlug/environments/:environmentId` | `OWNER`, `ADMIN` | `{ environment: Environment }`. Body: `{ name?, url? }` |
 
+Project detail environments include `latestDeployment` (`{ id, label, createdAt }` or `null`): the newest **recorded** deployment, not a live check.
+
+### Deployments API
+
+Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/environments/:environmentId/deployments`. Every route requires authentication and organization membership.
+
+| Endpoint | Role | Returns | Description |
+|---|---|---|---|
+| `POST /` | member (verified email) | `{ deployment }` (201) | Record an immutable deployment. Body: `{ label, commitSha?, url?, notes? }` |
+| `GET /` | member | `{ deployments, nextCursor }` (200) | Cursor-paginated list, newest first (`?limit=20&cursor=`) |
+| `GET /:deploymentId` | member | `{ deployment }` (200) | Single deployment inside that environment |
+
+- **Immutability:** no update or delete endpoints. Correct a record by adding a new deployment.
+- **Labels:** required, trimmed, 1–100 characters, unique per environment and case-sensitive. Duplicates return `409 DEPLOYMENT_LABEL_TAKEN`.
+- **Optional fields:** `commitSha` (7–40 hex), `url` (HTTP/HTTPS, max 2,048), `notes` (max 2,000). Blank values are stored as `null`.
+- **Pagination:** `limit` defaults to 20 (max 100). `nextCursor` is opaque; `null` means no more pages.
+- **Contract:** `docs/contracts/deployments-v1.md`.
+
 ### Review Rounds API
 
 Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/review-rounds`. Every route requires authentication and organization membership.
@@ -517,6 +538,7 @@ Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every ro
 - Authentication: signup, login, rotating refresh sessions with reuse detection, logout, logout-all, password reset by email, email verification, and rate limiting.
 - Organizations & team management: create, rename, list members, role promotion, member removal, and last-owner protection.
 - Projects & website environments: create, list, view, update, with generated slugs and environment URL configuration.
+- Deployment tracking: immutable environment-scoped records with optional commit SHA, URL and notes, database-enforced label uniqueness, cursor pagination, and latest recorded deployment on project detail.
 - Review rounds: creation linked to website environments, open/closed status tracking.
 - Scoped guest review access: secret token generation, URL fragment transmission, single-use handoffs, and short-lived widget sessions.
 - Issue management: concurrency-safe sequential issue numbering, role-based access, filtering, assigned-to-me support, status tab counts, and guest attribution.
@@ -524,7 +546,6 @@ Base path: `/api/v1/organizations/:orgId/projects/:projectSlug/issues`. Every ro
 - Automated CI pipeline: GitHub Actions workflow (`.github/workflows/ci.yml`) validating linting, types, unit/DOM tests, Prisma schema, migration deployment, API tests, and monorepo build on every PR to `main`.
 
 **Upcoming**
-- Deployment version tracking & release candidate linking.
 - Developer fix submission linked to specific deployments.
 - Independent QA verification and issue reopening workflows.
 - Release readiness assessment & blocker tracking.
