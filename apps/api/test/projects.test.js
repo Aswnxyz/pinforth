@@ -185,8 +185,9 @@ describe("GET projects", () => {
     expect(res.body.data.project).toMatchObject({ name: "Acme Website", slug: "acme-website" });
     expect(res.body.data.project.environments.map((e) => e.name)).toEqual(["Staging", "Production"]);
     expect(Object.keys(res.body.data.project.environments[0]).sort()).toEqual(
-      ["createdAt", "id", "name", "slug", "updatedAt", "url"]
+      ["createdAt", "id", "latestDeployment", "name", "slug", "updatedAt", "url"]
     );
+    expect(res.body.data.project.environments[0].latestDeployment).toBeNull();
   });
 
   it("returns 404 for an unknown or malformed project slug", async () => {
