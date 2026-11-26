@@ -115,6 +115,36 @@ it("preserves failed and passing attempts through close, replay, and reopen", as
   ]);
 });
 
+it("uses the latest fix attempt for verifiedOn even when an older pass has a later timestamp", async () => {
+  const t = await setup();
+  const { fix: firstFix } = data(await submit(t).expect(201));
+  const { verification: firstPass } = data(await verify(t, firstFix).expect(201));
+  expect(data(await patch(t, { status: "IN_PROGRESS" }).expect(200)).issue.verifiedOn).toBeNull();
+
+  const { fix: secondFix } = data(await submit(t, "fix-2").expect(201));
+  const { issue: verified, verification: secondPass } = data(
+    await verify(t, secondFix, { clientMutationId: "verify-2" }).expect(201)
+  );
+  await prisma.verification.update({
+    where: { id: firstPass.id },
+    data: { createdAt: new Date(Date.parse(secondPass.createdAt) + 1_000) },
+  });
+  expect(verified.verifiedOn.verificationId).toBe(secondPass.id);
+  expect(data(await t.owner.as("get", t.path).expect(200)).issue.verifiedOn).toEqual(verified.verifiedOn);
+  expect(data(await patch(t, { status: "CLOSED" }).expect(200)).issue).toMatchObject({
+    status: "CLOSED", closeReason: "RESOLVED", verifiedOn: verified.verifiedOn,
+  });
+  expect(data(await patch(t, { status: "IN_PROGRESS" }).expect(200)).issue.verifiedOn).toBeNull();
+  expect((await attempts(t)).map(({ verification }) => verification.id)).toEqual([
+    secondPass.id, firstPass.id,
+  ]);
+
+  await submit(t, "fix-3").expect(201);
+  // Simulate inconsistent stored status to check that older passes stay historical.
+  await prisma.issue.update({ where: { id: t.issue.id }, data: { status: "VERIFIED" } });
+  expect(data(await t.owner.as("get", t.path).expect(200)).issue.verifiedOn).toBeNull();
+});
+
 it("allows only the submitter to withdraw and retains the canonical timeline entry", async () => {
   const t = await setup();
   const { fix } = data(await submit(t).expect(201));

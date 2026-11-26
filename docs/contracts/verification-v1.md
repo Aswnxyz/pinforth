@@ -565,7 +565,7 @@ Definitions:
 
 - `attemptCount`: total fix submissions, including withdrawn and failed attempts.
 - `pendingFix`: non-null only when the issue is `READY_FOR_VERIFICATION` and its latest fix is neither withdrawn nor verified. It is `null` for every other status, and `null` for a closed or reopened issue.
-- `verifiedOn`: non-null only for `VERIFIED`, or for `CLOSED` with `closeReason: "RESOLVED"`. It contains the latest `PASS` verification for the issue. It is `null` for reopened, in-progress, or unverified-closed issues.
+- `verifiedOn`: shows the `PASS` verification associated with the highest-numbered fix attempt when the issue is `VERIFIED` or `CLOSED` with `closeReason: "RESOLVED"`. It is `null` in other statuses or when the latest attempt has no passing verification.
 - Historical passes remain available through attempt history even after `verifiedOn` becomes `null`.
 - `closedBy` contains `id` and `name` only. Emails are not exposed for these new fields.
 

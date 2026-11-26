@@ -103,14 +103,8 @@ const issueSelectDetail = {
     take: 1,
     select: {
       ...fixSelect,
-      verification: { select: { id: true } },
+      verification: { select: verificationSelect },
     },
-  },
-  verifications: {
-    where: { result: "PASS" },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 1,
-    select: verificationSelect,
   },
 };
 
@@ -218,7 +212,7 @@ const toIssueDetail = (issue) => {
       ? toPendingFix(latestFix)
       : null;
 
-  const latestPass = issue.verifications?.[0] ?? null;
+  const latestVerification = latestFix?.verification;
   const showsVerification =
     issue.status === "VERIFIED" || (issue.status === "CLOSED" && issue.closeReason === "RESOLVED");
 
@@ -230,7 +224,10 @@ const toIssueDetail = (issue) => {
     context: issue.context,
     attemptCount: issue._count.fixSubmissions,
     pendingFix,
-    verifiedOn: showsVerification && latestPass ? toVerifiedOn(latestPass) : null,
+    verifiedOn:
+      showsVerification && latestVerification?.result === "PASS"
+        ? toVerifiedOn(latestVerification)
+        : null,
     closeNote: issue.closeNote ?? null,
     closedAt: issue.closedAt ? iso(issue.closedAt) : null,
     closedBy: issue.closedBy ?? null,
