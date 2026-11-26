@@ -13,15 +13,20 @@ import {
   updateComment,
 } from "./comments.service.js";
 import {
+  createFixSubmissionSchema,
   createIssueSchema,
+  createVerificationSchema,
   issueNumberParam,
   listIssuesQuerySchema,
   updateIssueSchema,
 } from "./issues.schemas.js";
 import {
+  createFixSubmission,
   createIssue,
+  createVerification,
   deleteIssue,
   getIssue,
+  listAttempts,
   listIssues,
   updateIssue,
 } from "./issues.service.js";
@@ -81,6 +86,46 @@ router.get("/:number/timeline", async (req, res) => {
   const timeline = await getIssueTimeline(getProject(req).id, number, query);
 
   res.status(200).json({ success: true, data: timeline });
+});
+
+router.get("/:number/attempts", async (req, res) => {
+  const number = parseNumber(req.params.number);
+  const attempts = await listAttempts(getProject(req).id, number);
+
+  res.status(200).json({ success: true, data: { attempts } });
+});
+
+router.post("/:number/fixes", requireVerifiedEmail, async (req, res) => {
+  const number = parseNumber(req.params.number);
+  const input = createFixSubmissionSchema.parse(req.body);
+  const result = await createFixSubmission(
+    getProject(req).id,
+    number,
+    getAuth(req).userId,
+    input
+  );
+
+  res.status(result.created ? 201 : 200).json({
+    success: true,
+    data: { fix: result.fix, issue: result.issue },
+  });
+});
+
+router.post("/:number/verifications", requireVerifiedEmail, async (req, res) => {
+  const number = parseNumber(req.params.number);
+  const input = createVerificationSchema.parse(req.body);
+  const result = await createVerification(
+    getMembership(req).organizationId,
+    getProject(req).id,
+    number,
+    getAuth(req).userId,
+    input
+  );
+
+  res.status(result.created ? 201 : 200).json({
+    success: true,
+    data: { verification: result.verification, issue: result.issue },
+  });
 });
 
 router.post("/:number/comments", requireVerifiedEmail, async (req, res) => {

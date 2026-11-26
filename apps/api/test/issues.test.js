@@ -324,6 +324,7 @@ describe("GET /organizations/:orgId/projects/:projectSlug/issues", () => {
       NEW: 3,
       IN_PROGRESS: 0,
       READY_FOR_VERIFICATION: 0,
+      VERIFIED: 0,
       CLOSED: 0,
     });
   });
@@ -400,6 +401,7 @@ describe("GET /organizations/:orgId/projects/:projectSlug/issues", () => {
     });
     await t.owner.as("patch", `${t.issuesPath}/${res4.body.data.issue.number}`).send({
       status: "CLOSED",
+      closeReason: "NOT_A_BUG",
     });
 
     // Now regular member filters: search="Login", assigneeId="me", AND clicks the "IN_PROGRESS" status tab
@@ -426,6 +428,7 @@ describe("GET /organizations/:orgId/projects/:projectSlug/issues", () => {
       NEW: 1,
       IN_PROGRESS: 1,
       READY_FOR_VERIFICATION: 0,
+      VERIFIED: 0,
       CLOSED: 0,
     });
   });

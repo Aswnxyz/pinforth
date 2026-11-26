@@ -36,6 +36,12 @@ export const issueActivityTypeSchema = z.enum([
   "ASSIGNEE_CHANGED",
   "TITLE_CHANGED",
   "DESCRIPTION_CHANGED",
+  "FIX_SUBMITTED",
+  "FIX_WITHDRAWN",
+  "VERIFICATION_PASSED",
+  "VERIFICATION_FAILED",
+  "ISSUE_CLOSED",
+  "ISSUE_REOPENED",
 ]);
 export type IssueActivityType = z.infer<typeof issueActivityTypeSchema>;
 
@@ -60,7 +66,18 @@ export interface IssueCommentEntry extends IssueComment {
   type: "COMMENT";
 }
 
-export type IssueActivityValue = string | TimelineActor | null;
+/**
+ * Lifecycle activities carry structured payloads (fix ids, deployment labels,
+ * verification results). Keep this open so a payload added later is rendered
+ * generically instead of failing the page.
+ */
+export type IssueActivityValue =
+  | string
+  | number
+  | boolean
+  | TimelineActor
+  | Record<string, unknown>
+  | null;
 
 export interface IssueActivityEntry {
   id: string;

@@ -5,3 +5,4 @@ export * from "./review-rounds.js";
 export * from "./widget.js";
 export * from "./comments.js";
 export * from "./deployments.js";
+export * from "./verification.js";
