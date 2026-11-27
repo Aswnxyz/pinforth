@@ -1,4 +1,5 @@
 import { apiFetch, type ApiResult } from "@/lib/auth/api";
+import { isLatestDeployment, type LatestDeployment } from "@/lib/deployments/api";
 
 /**
  * The project and environment API client.
@@ -30,6 +31,11 @@ export interface Environment {
   url: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The most recently recorded deployment, not a live check. Only the project
+   * detail read carries it; environment create/edit responses leave it out.
+   */
+  latestDeployment?: LatestDeployment | null;
 }
 
 /** The detail read carries the project's environments. */
@@ -101,7 +107,10 @@ function isEnvironment(value: unknown): value is Environment {
     isString(value.slug) &&
     isString(value.url) &&
     isString(value.createdAt) &&
-    isString(value.updatedAt)
+    isString(value.updatedAt) &&
+    (value.latestDeployment === undefined ||
+      value.latestDeployment === null ||
+      isLatestDeployment(value.latestDeployment))
   );
 }
 
