@@ -10,7 +10,9 @@ import { IssueFieldsPanel } from "@/components/issues/issue-fields-panel";
 import { BackLink, IssuePageShell, LoadStateView } from "@/components/issues/issue-page-shell";
 import { IssueTextEditor } from "@/components/issues/issue-text-editor";
 import { IssueTimeline } from "@/components/issues/timeline/issue-timeline";
+import { IssueVerification } from "@/components/issues/verification/issue-verification";
 import { FormAlert } from "@/components/ui/form-alert";
+import { useAuth } from "@/lib/auth/context";
 import type { OrganizationSummary } from "@/lib/organizations/api";
 import { canManageProjects } from "@/lib/organizations/organization-access";
 import {
@@ -93,6 +95,7 @@ function IssueDetailSection({
   number: number | null;
 }) {
   const router = useRouter();
+  const meId = useAuth().user?.id ?? null;
   const listHref = `/w/${organization.slug}/projects/${projectSlug}/issues`;
 
   const workspace = useGuardedLoad(`${organization.id}|${projectSlug}`, () =>
@@ -160,6 +163,19 @@ function IssueDetailSection({
       // An unknown outcome is checked from the top of the page, not inside the close step.
       ...(failure.kind === "refresh" ? { closing: false } : {}),
     });
+    // A 409 or 403 usually means someone else moved the issue on (a fix was
+    // submitted, tested or withdrawn); show what it is now.
+    if (outcome.status === "conflict" || outcome.status === "forbidden") void resync();
+  }
+
+  /** Re-reads the issue in place, keeping whatever message is shown. */
+  async function resync() {
+    const token = issueLoad.guard.start();
+    const outcome = await getIssue(organization.id, projectSlug, issueNumber);
+    if (!issueLoad.guard.accept(token)) return;
+    if (outcome.status === "success") issueLoad.update(key, () => outcome.data);
+    else if (outcome.status === "unauthorized") router.replace("/login");
+    else if (outcome.status === "not-found") issueLoad.retry();
   }
 
   async function remove() {
@@ -301,6 +317,27 @@ function IssueDetailSection({
             />
           ) : null}
 
+          <IssueVerification
+            orgId={organization.id}
+            projectSlug={projectSlug}
+            issue={issue}
+            environments={project.environments}
+            meId={meId}
+            memberCount={members ? members.length : null}
+            locked={locked || session.editingText || session.closing}
+            onIssue={(next) => {
+              change({ message: null, notice: null });
+              issueLoad.update(key, () => next);
+            }}
+            onWithdraw={() => void save({ status: "IN_PROGRESS" })}
+            onStale={(message) => {
+              change({ message, notice: null });
+              void resync();
+            }}
+            onGone={issueLoad.retry}
+            onLogin={() => router.replace("/login")}
+          />
+
           <IssueContext issue={issue} />
 
           <IssueTimeline
@@ -312,7 +349,10 @@ function IssueDetailSection({
             onLogin={() => router.replace("/login")}
           />
 
-          {canManageProjects(organization.role) ? (
+          {/* Fix and test history is permanent (contract §5.5). */}
+          {canManageProjects(organization.role) && issue.attemptCount > 0 ? (
+            <p className="text-sm text-muted-foreground">Issues with fix history can’t be deleted. Close it instead.</p>
+          ) : canManageProjects(organization.role) ? (
             session.confirmingDelete ? (
               <IssueDeleteCard
                 number={issue.number}
@@ -341,6 +381,7 @@ function IssueDetailSection({
           issue={issue}
           assignees={members ? assigneeOptions(members) : null}
           environments={project.environments}
+          environmentLocked={issue.attemptCount > 0}
           disabled={locked || session.editingText || session.closing}
           fieldErrors={session.editingText || session.closing ? null : session.fields}
           onSave={(changes) =>
