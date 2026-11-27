@@ -176,7 +176,7 @@ describe("timeline helpers", () => {
     expect(describeActivity(activity({ activityType: "ASSIGNEE_CHANGED", oldValue: null, newValue: { id: "m", name: "Rahul" } }))).toBe("assigned this issue to Rahul");
     expect(describeActivity(activity({ activityType: "ASSIGNEE_CHANGED", oldValue: { id: "m", name: "Rahul" }, newValue: null }))).toBe("unassigned Rahul");
     expect(describeActivity(activity({ activityType: "TITLE_CHANGED", oldValue: "a", newValue: "Better title" }))).toBe("changed the title to “Better title”");
-    expect(describeActivity(activity({ activityType: "STATUS_CHANGED", newValue: "VERIFIED" }))).toBe("changed status from New to VERIFIED");
+    expect(describeActivity(activity({ activityType: "STATUS_CHANGED", newValue: "TRIAGED" }))).toBe("changed status from New to TRIAGED");
     expect(describeActivity(activity({ activityType: "SOMETHING_NEW" }))).toBe("updated this issue");
   });
 

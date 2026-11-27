@@ -61,6 +61,7 @@ const summary: IssueSummary = {
   reporter: person,
   assignee: null,
   commentsCount: 2,
+  closeReason: null,
   createdAt: "2026-11-01T09:00:00.000Z",
   updatedAt: "2026-11-02T09:00:00.000Z",
 };
@@ -70,9 +71,12 @@ const issue: Issue = {
   description: "Tapping it on iOS Safari does nothing.",
   pageUrl: null,
   context: null,
+  closeNote: null,
+  closedAt: null,
+  closedBy: null,
 };
 
-const counts = { all: 7, NEW: 2, IN_PROGRESS: 1, READY_FOR_VERIFICATION: 0, CLOSED: 4 };
+const counts = { all: 7, NEW: 2, IN_PROGRESS: 1, READY_FOR_VERIFICATION: 0, VERIFIED: 0, CLOSED: 4 };
 const pagination = (page: number, totalPages: number) => ({
   page,
   limit: 20,
@@ -195,9 +199,28 @@ describe("issue client", () => {
 
   it("rejects an issue with an unknown status", async () => {
     stubFetch(() =>
-      jsonResponse({ success: true, data: { issue: { ...issue, status: "VERIFIED" } } }, 200),
+      jsonResponse({ success: true, data: { issue: { ...issue, status: "TRIAGED" } } }, 200),
     );
 
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("unavailable");
+  });
+
+  it("reads a verified issue, and a closed one with its reason", async () => {
+    stubFetch(() => jsonResponse({ success: true, data: { issue: { ...issue, status: "VERIFIED" } } }, 200));
+    expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("success");
+
+    const closed = {
+      ...issue,
+      status: "CLOSED",
+      closeReason: "DUPLICATE",
+      closeNote: "Same as #4",
+      closedAt: "2026-11-03T09:00:00.000Z",
+      closedBy: { id: "u-1", name: null },
+    };
+    stubFetch(() => jsonResponse({ success: true, data: { issue: closed } }, 200));
+    expect(await getIssue(ORG_ID, PROJECT, 12)).toEqual({ status: "success", data: closed });
+
+    stubFetch(() => jsonResponse({ success: true, data: { issue: { ...closed, closeReason: "BORED" } } }, 200));
     expect((await getIssue(ORG_ID, PROJECT, 12)).status).toBe("unavailable");
   });
 

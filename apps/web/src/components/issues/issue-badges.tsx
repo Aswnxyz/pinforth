@@ -1,5 +1,6 @@
-import type { IssuePriority, IssueStatus } from "@/lib/issues/api";
+import type { CloseReason, IssuePriority, IssueStatus } from "@/lib/issues/api";
 import {
+  CLOSE_REASON_LABELS,
   ISSUE_PRIORITY_LABELS,
   ISSUE_PRIORITY_TONES,
   ISSUE_STATUS_LABELS,
@@ -9,10 +10,18 @@ import {
 const badgeClass =
   "inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-xs font-medium";
 
-export function IssueStatusBadge({ status }: { status: IssueStatus }) {
+/** A closed issue also shows why: "Closed · Duplicate". */
+export function IssueStatusBadge({
+  status,
+  closeReason = null,
+}: {
+  status: IssueStatus;
+  closeReason?: CloseReason | null;
+}) {
   return (
     <span className={`${badgeClass} ${ISSUE_STATUS_TONES[status]}`}>
       {ISSUE_STATUS_LABELS[status]}
+      {status === "CLOSED" && closeReason ? ` · ${CLOSE_REASON_LABELS[closeReason]}` : null}
     </span>
   );
 }

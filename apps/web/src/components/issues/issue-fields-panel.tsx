@@ -3,17 +3,16 @@
 import { SelectField, type SelectOption } from "@/components/ui/select-field";
 import {
   ISSUE_PRIORITIES,
-  ISSUE_STATUSES,
   ISSUE_TYPES,
   type Issue,
   type IssueFieldErrors,
   type UpdateIssueInput,
 } from "@/lib/issues/api";
 import type { AssigneeOption } from "@/lib/issues/issue-loading";
+import { statusHint, statusOptions } from "@/lib/issues/lifecycle";
 import {
   formatIssueDate,
   ISSUE_PRIORITY_LABELS,
-  ISSUE_STATUS_LABELS,
   ISSUE_TYPE_LABELS,
   personName,
   reporterName,
@@ -37,6 +36,7 @@ function withCurrent(
 /**
  * The issue's editable fields. Each select saves on change through
  * `onSave`, with exactly one field in the update; the parent owns the request.
+ * Choosing Closed doesn't save: the parent asks for a reason first.
  */
 export function IssueFieldsPanel({
   issue,
@@ -63,8 +63,9 @@ export function IssueFieldsPanel({
         value={issue.status}
         disabled={disabled}
         error={fieldErrors?.status}
+        hint={statusHint(issue.status)}
         onChange={(value) => onSave({ status: value as Issue["status"] })}
-        options={ISSUE_STATUSES.map((value) => ({ value, label: ISSUE_STATUS_LABELS[value] }))}
+        options={statusOptions(issue.status)}
       />
 
       <SelectField

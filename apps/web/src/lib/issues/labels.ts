@@ -1,4 +1,5 @@
 import type {
+  CloseReason,
   IssuePerson,
   IssuePriority,
   IssueStatus,
@@ -21,7 +22,16 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   NEW: "New",
   IN_PROGRESS: "In progress",
   READY_FOR_VERIFICATION: "Ready for verification",
+  VERIFIED: "Verified",
   CLOSED: "Closed",
+};
+
+export const CLOSE_REASON_LABELS: Record<CloseReason, string> = {
+  RESOLVED: "Resolved",
+  WONT_FIX: "Won’t fix",
+  DUPLICATE: "Duplicate",
+  NOT_A_BUG: "Not a bug",
+  OTHER: "Other",
 };
 
 export const ISSUE_TYPE_LABELS: Record<IssueType, string> = {
@@ -45,6 +55,8 @@ export const ISSUE_STATUS_TONES: Record<IssueStatus, string> = {
     "border-status-in-progress/40 bg-status-in-progress/10 text-status-in-progress-foreground",
   READY_FOR_VERIFICATION:
     "border-status-qa-pending/40 bg-status-qa-pending-bg text-status-qa-pending-foreground",
+  VERIFIED:
+    "border-status-qa-verified/40 bg-status-qa-verified/10 text-status-qa-verified-foreground",
   CLOSED: "border-border bg-surface-muted text-muted-foreground",
 };
 

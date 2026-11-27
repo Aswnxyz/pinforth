@@ -1,6 +1,6 @@
 import type { IssueApiOutcome } from "./api";
 import type { ActivityEntry, IssueComment, TimelineEntry, TimelinePage } from "./comments-api";
-import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS, ISSUE_TYPE_LABELS } from "./labels";
+import { CLOSE_REASON_LABELS, ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS, ISSUE_TYPE_LABELS } from "./labels";
 
 // Matches COMMENT_BODY_MAX_LENGTH in @pinforth/shared.
 export const COMMENT_MAX = 10000;
@@ -82,6 +82,15 @@ function personIn(value: unknown): string | null {
   return typeof name === "string" && name.trim() ? name.trim() : "a team member";
 }
 
+const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+
+/** The deployment label snapshotted into fix and verification payloads. */
+function deploymentIn(value: unknown): string {
+  const deployment = field(value, "deploymentLabel");
+  return typeof deployment === "string" && deployment ? deployment : "a deployment";
+}
+
 /** The sentence after the actor's name, e.g. "changed status from New to In progress". */
 export function describeActivity(entry: ActivityEntry): string {
   const { oldValue, newValue } = entry;
@@ -102,6 +111,27 @@ export function describeActivity(entry: ActivityEntry): string {
       return typeof newValue === "string" ? `changed the title to “${newValue}”` : "changed the title";
     case "DESCRIPTION_CHANGED":
       return "updated the description";
+    case "FIX_SUBMITTED":
+      return `submitted a fix in ${deploymentIn(newValue)}`;
+    case "FIX_WITHDRAWN":
+      return `withdrew the fix for ${deploymentIn(oldValue)}`;
+    case "VERIFICATION_PASSED":
+      return `verified the fix on ${deploymentIn(newValue)}${field(newValue, "selfVerified") === true ? " (self-verified)" : ""}`;
+    case "VERIFICATION_FAILED":
+      return `marked the fix as failed on ${deploymentIn(newValue)}`;
+    case "ISSUE_CLOSED": {
+      const reason = field(newValue, "closeReason");
+      const note = field(newValue, "closeNote");
+      const as =
+        reason === "RESOLVED"
+          ? "resolved"
+          : typeof reason === "string" && reason in CLOSE_REASON_LABELS
+            ? CLOSE_REASON_LABELS[reason as keyof typeof CLOSE_REASON_LABELS]
+            : null;
+      return `closed this issue${as ? ` as ${as}` : ""}${typeof note === "string" && note ? `: “${note}”` : ""}`;
+    }
+    case "ISSUE_REOPENED":
+      return "reopened this issue";
     case "ISSUE_CREATED":
       return "opened this issue";
     default:

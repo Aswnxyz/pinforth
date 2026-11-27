@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CloseIssueCard, IssueClosedSummary } from "@/components/issues/close-issue-card";
 import { IssueStatusBadge, IssuePriorityBadge } from "@/components/issues/issue-badges";
 import { IssueContext } from "@/components/issues/issue-context";
 import { IssueDeleteCard } from "@/components/issues/issue-delete-card";
@@ -57,6 +58,8 @@ interface Session {
   pending: "save" | "delete" | null;
   editingText: boolean;
   confirmingDelete: boolean;
+  /** Closed was chosen; the reason step is open. */
+  closing: boolean;
   message: string | null;
   notice: string | null;
   fields: IssueFieldErrors | null;
@@ -69,6 +72,7 @@ const idle = (key: string): Session => ({
   pending: null,
   editingText: false,
   confirmingDelete: false,
+  closing: false,
   message: null,
   notice: null,
   fields: null,
@@ -139,7 +143,7 @@ function IssueDetailSection({
 
     if (outcome.status === "success") {
       issueLoad.update(key, () => outcome.data);
-      change({ pending: null, editingText: false });
+      change({ pending: null, editingText: false, closing: false });
       return;
     }
 
@@ -153,6 +157,8 @@ function IssueDetailSection({
       message: failure.message,
       fields: failure.kind === "message" ? failure.fields ?? null : null,
       unconfirmed: failure.kind === "refresh" ? changes : null,
+      // An unknown outcome is checked from the top of the page, not inside the close step.
+      ...(failure.kind === "refresh" ? { closing: false } : {}),
     });
   }
 
@@ -226,7 +232,7 @@ function IssueDetailSection({
         </p>
       ) : null}
 
-      {session.message && !session.confirmingDelete ? (
+      {session.message && !session.confirmingDelete && !session.closing ? (
         <div className="space-y-3">
           <FormAlert>{session.message}</FormAlert>
           {session.unconfirmed ? (
@@ -258,17 +264,18 @@ function IssueDetailSection({
                 {issue.title}
               </h1>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <IssueStatusBadge status={issue.status} />
+                <IssueStatusBadge status={issue.status} closeReason={issue.closeReason} />
                 <IssuePriorityBadge priority={issue.priority} />
                 <button
                   type="button"
-                  onClick={() => change({ editingText: true, confirmingDelete: false, message: null })}
+                  onClick={() => change({ editingText: true, confirmingDelete: false, closing: false, message: null })}
                   disabled={locked}
                   className="ml-auto inline-flex h-9 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Edit
                 </button>
               </div>
+              <IssueClosedSummary issue={issue} />
 
               <div className="mt-5 rounded-xl border border-border bg-surface-raised p-5 shadow-xs">
                 {issue.description ? (
@@ -281,6 +288,18 @@ function IssueDetailSection({
               </div>
             </div>
           )}
+
+          {session.closing ? (
+            <CloseIssueCard
+              number={issue.number}
+              from={issue.status}
+              pending={session.pending === "save"}
+              message={session.message}
+              serverErrors={session.fields}
+              onConfirm={(input) => void save(input)}
+              onCancel={() => change({ closing: false, message: null, fields: null })}
+            />
+          ) : null}
 
           <IssueContext issue={issue} />
 
@@ -308,7 +327,7 @@ function IssueDetailSection({
             ) : (
               <button
                 type="button"
-                onClick={() => change({ confirmingDelete: true, editingText: false, message: null })}
+                onClick={() => change({ confirmingDelete: true, editingText: false, closing: false, message: null })}
                 disabled={locked}
                 className="text-sm font-medium text-danger underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -322,9 +341,13 @@ function IssueDetailSection({
           issue={issue}
           assignees={members ? assigneeOptions(members) : null}
           environments={project.environments}
-          disabled={locked || session.editingText}
-          fieldErrors={session.editingText ? null : session.fields}
-          onSave={(changes) => void save(changes)}
+          disabled={locked || session.editingText || session.closing}
+          fieldErrors={session.editingText || session.closing ? null : session.fields}
+          onSave={(changes) =>
+            changes.status === "CLOSED"
+              ? change({ closing: true, confirmingDelete: false, editingText: false, message: null, fields: null })
+              : void save(changes)
+          }
         />
       </div>
     </div>
