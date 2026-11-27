@@ -26,6 +26,16 @@ const memberNotFound = () => notFound("Member not found");
 const lastOwner = () =>
   new AppError(409, "LAST_OWNER", "An organization needs at least one owner. Make someone else an owner first");
 
+// Membership insertion, removal and verification acquire this before reading
+// the membership set. The first owner is created with the organization itself.
+export async function lockOrganizationMembership(tx, organizationId) {
+  await tx.$queryRaw`
+    SELECT id FROM "Organization"
+    WHERE id = ${organizationId}::uuid
+    FOR NO KEY UPDATE
+  `;
+}
+
 export async function listMembers(organizationId, currentUserId) {
   const members = await prisma.organizationMember.findMany({
     where: { organizationId },
@@ -101,6 +111,7 @@ export async function removeMember(organizationId, memberId, actorUserId) {
   const id = parseMemberId(memberId);
 
   await prisma.$transaction(async (tx) => {
+    await lockOrganizationMembership(tx, organizationId);
     const { target, actorRole, ownerCount } = await lockForOwnershipChange(tx, organizationId, id, actorUserId);
 
     // Removed by someone else while this request was in flight.

@@ -38,6 +38,20 @@ enum IssueStatus {
   IN_PROGRESS
   READY_FOR_VERIFICATION
   CLOSED
+  VERIFIED
+}
+
+enum IssueCloseReason {
+  RESOLVED
+  WONT_FIX
+  DUPLICATE
+  NOT_A_BUG
+  OTHER
+}
+
+enum VerificationResult {
+  PASS
+  FAIL
 }
 
 enum IssueSource {
@@ -64,6 +78,12 @@ enum IssueActivityType {
   ASSIGNEE_CHANGED
   TITLE_CHANGED
   DESCRIPTION_CHANGED
+  FIX_SUBMITTED
+  FIX_WITHDRAWN
+  VERIFICATION_PASSED
+  VERIFICATION_FAILED
+  ISSUE_CLOSED
+  ISSUE_REOPENED
 }
 
 model User {
@@ -88,6 +108,10 @@ model User {
   issueComments       IssueComment[]
   issueActivity       IssueActivity[]      @relation("IssueActivityActor")
   deployments         Deployment[]
+  closedIssues        Issue[]              @relation("IssueCloser")
+  fixSubmissions      FixSubmission[]      @relation("FixSubmitter")
+  fixWithdrawals      FixSubmission[]      @relation("FixWithdrawer")
+  verifications       Verification[]       @relation("Verifier")
 }
 
 // One row per refresh token. Rotation creates a new row in the same family;
@@ -310,17 +334,24 @@ model Issue {
   clientMutationId String?       @db.VarChar(128)
   pageUrl          String?       @db.VarChar(2048)
   context          Json?         @db.JsonB
-  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  closeReason      IssueCloseReason?
+  closeNote        String?       @db.Text
+  closedAt         DateTime?      @db.Timestamptz(3)
+  closedById       String?       @db.Uuid
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
 
-  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  reporter    User?               @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Restrict)
-  assignee    OrganizationMember? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-  environment Environment?        @relation(fields: [environmentId], references: [id], onDelete: SetNull)
-  reviewRound ReviewRound?        @relation(fields: [reviewRoundId], references: [id], onDelete: SetNull)
-  guestLink   GuestAccessLink?    @relation(fields: [guestLinkId], references: [id], onDelete: SetNull)
-  comments    IssueComment[]
-  activities  IssueActivity[]
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reporter       User?               @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  assignee       OrganizationMember? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  environment    Environment?        @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  reviewRound    ReviewRound?        @relation(fields: [reviewRoundId], references: [id], onDelete: SetNull)
+  guestLink      GuestAccessLink?    @relation(fields: [guestLinkId], references: [id], onDelete: SetNull)
+  closedBy       User?               @relation("IssueCloser", fields: [closedById], references: [id], onDelete: SetNull)
+  comments       IssueComment[]
+  activities     IssueActivity[]
+  fixSubmissions FixSubmission[]
+  verifications  Verification[]
 
   @@unique([projectId, number])
   @@index([projectId, status])
@@ -328,6 +359,7 @@ model Issue {
   @@index([reporterId])
   @@index([reviewRoundId])
   @@index([guestLinkId])
+  @@index([closedById])
   @@unique([guestLinkId, clientMutationId])
 }
 
@@ -381,9 +413,66 @@ model Deployment {
   createdById   String?  @db.Uuid
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
 
-  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Restrict)
-  createdBy   User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  environment    Environment     @relation(fields: [environmentId], references: [id], onDelete: Restrict)
+  createdBy      User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  fixSubmissions FixSubmission[]
+  verifications  Verification[]
 
   @@unique([environmentId, label])
   @@index([environmentId, createdAt, id])
+}
+
+// A developer's claim that a specific deployment contains the fix for an issue.
+// Rows are immutable; withdrawal records metadata instead of deleting history.
+// `attemptNumber` stays stable so attempt history survives failures and retries.
+model FixSubmission {
+  id               String    @id @default(uuid()) @db.Uuid
+  issueId          String    @db.Uuid
+  deploymentId     String    @db.Uuid
+  submittedById    String?   @db.Uuid
+  note             String?   @db.Text
+  clientMutationId String    @db.VarChar(128)
+  attemptNumber    Int
+  withdrawnAt      DateTime? @db.Timestamptz(3)
+  withdrawnById    String?   @db.Uuid
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  issue       Issue        @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  deployment  Deployment   @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  submittedBy User?        @relation("FixSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  withdrawnBy User?        @relation("FixWithdrawer", fields: [withdrawnById], references: [id], onDelete: SetNull)
+  verification Verification?
+
+  @@unique([issueId, attemptNumber])
+  // Actor-scoped retry safety. `submittedById` is null only for historical rows
+  // whose account was removed, so new idempotent requests still collide.
+  @@unique([issueId, submittedById, clientMutationId])
+  @@index([issueId, createdAt])
+  @@index([deploymentId])
+  @@index([submittedById])
+}
+
+// An immutable QA decision about one fix submission. At most one verification
+// exists per fix; a failed fix requires a new submission before retesting.
+model Verification {
+  id               String             @id @default(uuid()) @db.Uuid
+  issueId          String             @db.Uuid
+  fixSubmissionId  String             @unique @db.Uuid
+  deploymentId     String             @db.Uuid
+  verifiedById     String?            @db.Uuid
+  result           VerificationResult
+  note             String?            @db.Text
+  selfVerified     Boolean            @default(false)
+  clientMutationId String             @db.VarChar(128)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+
+  issue         Issue         @relation(fields: [issueId], references: [id], onDelete: Restrict)
+  fixSubmission FixSubmission @relation(fields: [fixSubmissionId], references: [id], onDelete: Restrict)
+  deployment    Deployment    @relation(fields: [deploymentId], references: [id], onDelete: Restrict)
+  verifiedBy    User?         @relation("Verifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@unique([issueId, verifiedById, clientMutationId])
+  @@index([issueId, createdAt])
+  @@index([deploymentId])
+  @@index([verifiedById])
 }

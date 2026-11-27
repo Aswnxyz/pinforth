@@ -1,5 +1,7 @@
 import {
+  createFixSubmissionSchema,
   createIssueSchema,
+  createVerificationSchema,
   issuePrioritySchema,
   issueStatusSchema,
   issueTypeSchema,
@@ -7,7 +9,12 @@ import {
 } from "@pinforth/shared";
 import { z } from "zod";
 
-export { createIssueSchema, updateIssueSchema };
+export {
+  createFixSubmissionSchema,
+  createIssueSchema,
+  createVerificationSchema,
+  updateIssueSchema,
+};
 
 export const listIssuesQuerySchema = z
   .object({

@@ -3,6 +3,7 @@ import { AppError, notFound } from "../../lib/errors.js";
 import { renderEmail, sendMailInBackground } from "../../lib/mailer.js";
 import { prisma } from "../../lib/prisma.js";
 import { generateOpaqueToken, hashToken } from "../auth/tokens.js";
+import { lockOrganizationMembership } from "../organizations/members.service.js";
 import { invitationIdParam } from "./invitations.schemas.js";
 
 const ROLE_LABELS = { ADMIN: "an admin", MEMBER: "a member" };
@@ -273,6 +274,7 @@ export async function acceptInvitation(userId, token) {
     }
 
     const { organizationId } = invitation;
+    await lockOrganizationMembership(tx, organizationId);
 
     // ON CONFLICT DO NOTHING: an existing membership (and its role) is kept.
     await tx.organizationMember.createMany({
