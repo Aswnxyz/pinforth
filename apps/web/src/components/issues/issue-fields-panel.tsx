@@ -42,6 +42,7 @@ export function IssueFieldsPanel({
   issue,
   assignees,
   environments,
+  environmentLocked,
   disabled,
   fieldErrors,
   onSave,
@@ -50,6 +51,8 @@ export function IssueFieldsPanel({
   /** Null when the members could not be read: the assignee is read-only. */
   assignees: readonly AssigneeOption[] | null;
   environments: readonly { id: string; name: string }[];
+  /** Once a fix exists the environment can't change (contract §5.4). */
+  environmentLocked: boolean;
   /** True while any change is being saved or must be checked first. */
   disabled: boolean;
   fieldErrors: IssueFieldErrors | null;
@@ -118,7 +121,8 @@ export function IssueFieldsPanel({
         label="Environment"
         name="environmentId"
         value={issue.environment?.id ?? NONE}
-        disabled={disabled}
+        disabled={disabled || environmentLocked}
+        hint={environmentLocked ? "Fixed once a fix was submitted, so its history stays accurate." : undefined}
         error={fieldErrors?.environmentId}
         onChange={(value) => onSave({ environmentId: value || null })}
         options={withCurrent(

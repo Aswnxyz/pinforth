@@ -1,3 +1,4 @@
+import type { PendingFix, VerifiedOn } from "@pinforth/shared";
 import { apiFetch, type ApiResult } from "@/lib/auth/api";
 
 /**
@@ -80,11 +81,19 @@ export interface Issue extends IssueSummary {
   pageUrl: string | null;
   /** Widget-captured page context (selector, viewport, browser); free-form JSON. */
   context: unknown;
+  /** Every fix ever submitted, withdrawn and failed ones included. */
+  attemptCount: number;
+  /** The fix waiting to be tested; only while Ready for verification. */
+  pendingFix: PendingFix | null;
+  /** The passing test behind a Verified (or resolved) issue. */
+  verifiedOn: VerifiedOn | null;
   closeNote: string | null;
   closedAt: string | null;
   /** A member snapshot without an email, unlike `reporter`. */
   closedBy: { id: string; name: string | null } | null;
 }
+
+export type { PendingFix, VerifiedOn };
 
 /** Per-status totals for the other active filters, plus `all`, for the tabs. */
 export type IssueCounts = Record<IssueStatus | "all", number>;
@@ -246,6 +255,44 @@ export function isIssueSummary(value: unknown): value is IssueSummary {
   );
 }
 
+/** `{ id, name }`, as fix and verification records show people. */
+export const isActor = (value: unknown): value is { id: string; name: string | null } =>
+  isRecord(value) && isString(value.id) && isNullableString(value.name);
+
+/** The deployment a fix or test points at. */
+export const isFixDeployment = (value: unknown): value is PendingFix["deployment"] =>
+  isRecord(value) &&
+  isString(value.id) &&
+  isString(value.label) &&
+  isString(value.environmentId) &&
+  isString(value.createdAt);
+
+function isPendingFix(value: unknown): value is PendingFix {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    isString(value.issueId) &&
+    Number.isInteger(value.attemptNumber) &&
+    isFixDeployment(value.deployment) &&
+    (value.submittedBy === null || isActor(value.submittedBy)) &&
+    isNullableString(value.note) &&
+    isString(value.createdAt)
+  );
+}
+
+function isVerifiedOn(value: unknown): value is VerifiedOn {
+  return (
+    isRecord(value) &&
+    isString(value.verificationId) &&
+    isRecord(value.deployment) &&
+    isString(value.deployment.id) &&
+    isString(value.deployment.label) &&
+    (value.verifiedBy === null || isActor(value.verifiedBy)) &&
+    typeof value.selfVerified === "boolean" &&
+    isString(value.verifiedAt)
+  );
+}
+
 export function isIssue(value: unknown): value is Issue {
   return (
     isIssueSummary(value) &&
@@ -254,10 +301,12 @@ export function isIssue(value: unknown): value is Issue {
     (value.pageUrl === null || isString(value.pageUrl)) &&
     // Free-form JSON: any value is valid, it is read defensively when shown.
     "context" in value &&
+    isCount(value.attemptCount) &&
+    (value.pendingFix === null || isPendingFix(value.pendingFix)) &&
+    (value.verifiedOn === null || isVerifiedOn(value.verifiedOn)) &&
     isNullableString(value.closeNote) &&
     isNullableString(value.closedAt) &&
-    (value.closedBy === null ||
-      (isRecord(value.closedBy) && isString(value.closedBy.id) && isNullableString(value.closedBy.name)))
+    (value.closedBy === null || isActor(value.closedBy))
   );
 }
 
