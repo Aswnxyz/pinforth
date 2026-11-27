@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app/app-header";
+import { EnvironmentDeployments } from "@/components/deployments/environment-deployments";
 import { EditProjectForm } from "@/components/projects/edit-project-form";
 import { EnvironmentForm } from "@/components/projects/environment-form";
 import { EnvironmentList } from "@/components/projects/environment-list";
@@ -1007,18 +1008,32 @@ function ProjectDetailSection({
               />
             ) : null
           }
-          // Members can see who has access; only managers can revoke.
+          // Every member can record deployments and see who has access; only
+          // managers can revoke.
           footer={(environment) =>
             environment.id ? (
-              <EnvironmentReviewers
-                orgId={organization.id}
-                projectSlug={projectSlug}
-                environment={{ id: environment.id, name: environment.name }}
-                reloadToken={reviewerReloads[environment.id] ?? 0}
-                canRevoke={canManageProjects(organization.role)}
-                onGone={() => setRetryToken((token) => token + 1)}
-                onLogin={() => router.replace("/login")}
-              />
+              <div className="space-y-2">
+                <EnvironmentDeployments
+                  orgId={organization.id}
+                  projectSlug={projectSlug}
+                  environment={{ id: environment.id, name: environment.name }}
+                  latest={
+                    project.environments.find((candidate) => candidate.id === environment.id)
+                      ?.latestDeployment
+                  }
+                  onGone={() => setRetryToken((token) => token + 1)}
+                  onLogin={() => router.replace("/login")}
+                />
+                <EnvironmentReviewers
+                  orgId={organization.id}
+                  projectSlug={projectSlug}
+                  environment={{ id: environment.id, name: environment.name }}
+                  reloadToken={reviewerReloads[environment.id] ?? 0}
+                  canRevoke={canManageProjects(organization.role)}
+                  onGone={() => setRetryToken((token) => token + 1)}
+                  onLogin={() => router.replace("/login")}
+                />
+              </div>
             ) : null
           }
         />
