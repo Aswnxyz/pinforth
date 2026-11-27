@@ -47,7 +47,7 @@ export function IssueList({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <IssueStatusBadge status={issue.status} />
+              <IssueStatusBadge status={issue.status} closeReason={issue.closeReason} />
               <IssuePriorityBadge priority={issue.priority} />
               {issue.commentsCount > 0 ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

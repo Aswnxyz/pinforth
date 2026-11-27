@@ -18,8 +18,11 @@ export const ISSUE_STATUSES = [
   "NEW",
   "IN_PROGRESS",
   "READY_FOR_VERIFICATION",
+  "VERIFIED",
   "CLOSED",
 ] as const;
+/** `RESOLVED` is set by the API when a verified issue is closed; never sent for an unverified one. */
+export const CLOSE_REASONS = ["RESOLVED", "WONT_FIX", "DUPLICATE", "NOT_A_BUG", "OTHER"] as const;
 export const ISSUE_TYPES = ["BUG", "DESIGN", "CONTENT", "SUGGESTION"] as const;
 export const ISSUE_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export const ISSUE_SOURCES = ["DASHBOARD", "WIDGET"] as const;
@@ -28,6 +31,7 @@ export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 export type IssueType = (typeof ISSUE_TYPES)[number];
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 export type IssueSource = (typeof ISSUE_SOURCES)[number];
+export type CloseReason = (typeof CLOSE_REASONS)[number];
 
 /** A person as an issue shows them. `name` is optional on an account. */
 export interface IssuePerson {
@@ -57,6 +61,8 @@ export interface IssueSummary {
   environment: { id: string; name: string } | null;
   /** Comments not deleted, internal included. */
   commentsCount: number;
+  /** Set only while the issue is closed. */
+  closeReason: CloseReason | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +80,10 @@ export interface Issue extends IssueSummary {
   pageUrl: string | null;
   /** Widget-captured page context (selector, viewport, browser); free-form JSON. */
   context: unknown;
+  closeNote: string | null;
+  closedAt: string | null;
+  /** A member snapshot without an email, unlike `reporter`. */
+  closedBy: { id: string; name: string | null } | null;
 }
 
 /** Per-status totals for the other active filters, plus `all`, for the tabs. */
@@ -110,7 +120,9 @@ export type IssueField =
   | "priority"
   | "status"
   | "assigneeId"
-  | "environmentId";
+  | "environmentId"
+  | "closeReason"
+  | "closeNote";
 
 export type IssueFieldErrors = Partial<Record<IssueField, string>>;
 
@@ -133,6 +145,9 @@ export interface UpdateIssueInput {
   status?: IssueStatus;
   assigneeId?: string | null;
   environmentId?: string | null;
+  /** Only with `status: "CLOSED"`. */
+  closeReason?: CloseReason;
+  closeNote?: string | null;
 }
 
 export interface IssueRemoval {
@@ -168,6 +183,8 @@ const ISSUE_FIELDS: readonly IssueField[] = [
   "status",
   "assigneeId",
   "environmentId",
+  "closeReason",
+  "closeNote",
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -185,6 +202,8 @@ const isStatus = oneOf(ISSUE_STATUSES);
 const isType = oneOf(ISSUE_TYPES);
 const isPriority = oneOf(ISSUE_PRIORITIES);
 const isSource = oneOf(ISSUE_SOURCES);
+const isCloseReason = oneOf(CLOSE_REASONS);
+const isNullableString = (value: unknown) => value === null || isString(value);
 
 function isPerson(value: unknown): value is IssuePerson {
   return (
@@ -221,6 +240,7 @@ export function isIssueSummary(value: unknown): value is IssueSummary {
         isString(value.environment.id) &&
         isString(value.environment.name))) &&
     isCount(value.commentsCount) &&
+    (value.closeReason === null || isCloseReason(value.closeReason)) &&
     isString(value.createdAt) &&
     isString(value.updatedAt)
   );
@@ -233,7 +253,11 @@ export function isIssue(value: unknown): value is Issue {
     (value.description === null || isString(value.description)) &&
     (value.pageUrl === null || isString(value.pageUrl)) &&
     // Free-form JSON: any value is valid, it is read defensively when shown.
-    "context" in value
+    "context" in value &&
+    isNullableString(value.closeNote) &&
+    isNullableString(value.closedAt) &&
+    (value.closedBy === null ||
+      (isRecord(value.closedBy) && isString(value.closedBy.id) && isNullableString(value.closedBy.name)))
   );
 }
 
